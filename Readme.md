@@ -36,11 +36,8 @@ La API desarrollada actúa como una interfaz esencial entre los sensores físico
 
 ### Tecnologías Utilizadas
 
--   FastAPI: Ofrece un framework robusto y rápido para el desarrollo de API con soporte automático de documentación.
--   SQLAlchemy: Actúa como ORM para interactuar con la base de datos de manera segura y eficiente.
--   JWT: Utilizado para la gestión de la autenticación y la autorización.
--   PostgreSQL: Base de datos utilizada para el almacenamiento de datos a largo plazo.
-
-### Conclusiones
-
-La API no solo sirve como puente entre los sensores y el frontend sino que también facilita un ecosistema completo para la gestión de datos, desde la recopilación y almacenamiento hasta el análisis avanzado y la visualización en tiempo real, asegurando que la toma de decisiones sea informada y basada en datos precisos y actuales.
+-   FastAPI 🚪
+-   SQLAlchemy 📟
+-   JWT 🔐
+-   PostgreSQL 🔑
+-   Docker 🐳

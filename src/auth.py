@@ -2,7 +2,12 @@ from datetime import datetime, timedelta,timezone
 from jose import jwt, JWTError
 from typing import Optional
 from .models import pwd_context
-SECRET_KEY = "your_secret_key"
+import os
+from dotenv import load_dotenv
+
+load_dotenv(os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env'))
+
+SECRET_KEY = os.environ['KEY']
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
