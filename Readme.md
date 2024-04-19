@@ -41,7 +41,8 @@ La API desarrollada actúa como una interfaz esencial entre los sensores físico
 -   `touch .env`
 > [!IMPORTANT]
 > es recomendable generar la key con el siguiente comando : `python -c 'import secrets; print(secrets.token_urlsafe(26))'`
--   ```
+-   dentro del archivo .env
+    ```
     DB_USER=""
     DB_PASSWORD=""
     DB_NAME=""
