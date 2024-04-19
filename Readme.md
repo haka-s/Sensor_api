@@ -34,6 +34,22 @@ La API desarrollada actúa como una interfaz esencial entre los sensores físico
 -   La seguridad de la API se refuerza mediante el uso de HTTPS para todas las comunicaciones.
 -   Los tokens JWT proporcionan un método seguro y eficiente para la autenticación de usuarios y dispositivos.
 
+## Set Up
+> [!NOTE]
+> Debes tener docker instalado y corriendo
+-   `git clone https://github.com/haka-s/Sensor_api`
+-   `touch .env`
+> [!IMPORTANT]
+> es recomendable generar la key con el siguiente comando : `python -c 'import secrets; print(secrets.token_urlsafe(26))'`
+-   ```
+    DB_USER=""
+    DB_PASSWORD=""
+    DB_NAME=""
+    KEY=""
+    ```
+-   `docker-compose --env-file .env up --build`
+
+
 ### Tecnologías Utilizadas
 
 -   FastAPI 🚪
