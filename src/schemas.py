@@ -15,7 +15,7 @@ class UserDisplay(BaseModel):
     username: str
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 class SensorCreate(BaseModel):
     tipo_sensor_id: int
     maquina_id: int
