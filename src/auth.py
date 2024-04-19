@@ -6,8 +6,8 @@ import os
 from dotenv import load_dotenv
 
 load_dotenv(os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env'))
-
-SECRET_KEY = os.environ['KEY']
+key = os.getenv('KEY')
+SECRET_KEY = key
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
