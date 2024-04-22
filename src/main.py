@@ -121,3 +121,27 @@ def create_tipo_sensor(sensor_data: schemas.TipoSensorCreate, db: Session = Depe
     db.commit()
     db.refresh(new_sensor_type)
     return new_sensor_type
+
+@app.get("/maquinas/{maquina_id}")
+def read_maquina(maquina_id: int, db: Session = Depends(get_db)):
+    maquina = db.query(models.Maquina).filter(models.Maquina.id == maquina_id).first()
+    if not maquina:
+        raise HTTPException(status_code=404, detail="Machine not found")
+
+    # Preparing data for response
+    machine_data = {
+        "id": maquina.id,
+        "nombre": maquina.nombre,
+        "sensores": [
+            {
+                "id": sensor.id,
+                "tipo": sensor.tipo_sensor.nombre,
+                "unidad": sensor.tipo_sensor.unidad,
+                "estado": sensor.estado,
+                "valor": sensor.valor,
+                "fecha_hora": sensor.fecha_hora
+            } for sensor in maquina.sensores
+        ]
+    }
+
+    return machine_data
