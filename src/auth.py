@@ -1,3 +1,4 @@
+from fastapi import HTTPException
 from jose import jwt, ExpiredSignatureError, JWTError
 from datetime import datetime, timedelta, timezone
 import os

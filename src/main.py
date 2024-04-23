@@ -1,5 +1,6 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi.params import Query
 from sqlalchemy.orm import Session
 from . import models,schemas,auth, dependencies
 from datetime import datetime,timezone,timedelta
@@ -146,19 +147,22 @@ def read_maquina(maquina_id: int, db: Session = Depends(get_db)):
 
     return machine_data
 @app.get("/sensors/{sensor_id}/history")
-def get_sensor_history(sensor_id: int, 
-                       start_date: datetime = Query(None), 
-                       end_date: datetime = Query(None), 
-                       db: Session = Depends(get_db)):
-    query = db.query(models.Sensor).filter(models.Sensor.id == sensor_id)
+def get_sensor_history(
+    sensor_id: int, 
+    query: schemas.SensorHistoryQuery = Depends(),
+    db: Session = Depends(get_db)):
 
-    if start_date:
-        query = query.filter(Sensor.fecha_hora >= start_date)
-    if end_date:
-        query = query.filter(Sensor.fecha_hora <= end_date)
+    if not query:
+        raise HTTPException(status_code=400, detail="Invalid date parameters")
 
-    sensor_data = query.all()
+    query_statement = db.query(models.Sensor).filter(models.Sensor.id == sensor_id)
+    if query.start_date:
+        query_statement = query_statement.filter(models.Sensor.fecha_hora >= query.start_date)
+    if query.end_date:
+        query_statement = query_statement.filter(models.Sensor.fecha_hora <= query.end_date)
+
+    sensor_data = query_statement.all()
     if not sensor_data:
         raise HTTPException(status_code=404, detail="No historical data found for this sensor.")
 
-    return [{"valor": data.valor, "fecha_hora": data.fecha_hora} for data in sensor_data]
+    return [{"value": data.value, "datetime": data.fecha_hora.strftime('%Y-%m-%d %H:%M:%S')} for data in sensor_data]
