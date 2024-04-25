@@ -5,15 +5,19 @@ from sqlalchemy.orm import Session
 from . import models,schemas,auth, dependencies
 from datetime import datetime,timezone,timedelta
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from .mqtt_polling import start_mqtt,stop_mqtt
+from threading import Thread
 
-    
+app = FastAPI()
+mqtt_thread = Thread(target=start_mqtt)   
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    models.init_db() 
+    models.init_db()
+    mqtt_thread.start()
     yield
-
-app = FastAPI(lifespan=lifespan)
-
+    stop_mqtt()
+    mqtt_thread.join()
+app.router.lifespan_context = lifespan
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 def get_db():
     db = models.SessionLocal()
@@ -21,6 +25,7 @@ def get_db():
         yield db
     finally:
         db.close()
+
         
 @app.post("/token", response_model=schemas.Token)
 def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
@@ -46,7 +51,8 @@ def create_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
     db_user = db.query(models.User).filter(models.User.username == user.username).first()
     if db_user:
         raise HTTPException(status_code=400, detail="Username already registered")
-    new_user = models.User(username=user.username)
+    new_user = models.User(username=user.username, role=user.role)
+    
     new_user.hash_password(user.password)
     db.add(new_user)
     db.commit()
@@ -113,7 +119,7 @@ def list_tipo_sensor(db: Session = Depends(get_db)):
     return schemas.TipoSensorList(tipos=sensor_types)
 
 @app.post("/tipo-sensor/", response_model=schemas.TipoSensorCreate)
-def create_tipo_sensor(sensor_data: schemas.TipoSensorCreate, db: Session = Depends(get_db)):
+def create_tipo_sensor(sensor_data: schemas.TipoSensorCreate, db: Session = Depends(get_db),current_user: models.User = Depends(dependencies.require_role('admin'))):
     existing_sensor_type = db.query(models.TipoSensor).filter(models.TipoSensor.nombre == sensor_data.nombre).first()
     if existing_sensor_type:
         raise HTTPException(status_code=400, detail="Sensor type already exists")
@@ -124,7 +130,7 @@ def create_tipo_sensor(sensor_data: schemas.TipoSensorCreate, db: Session = Depe
     return new_sensor_type
 
 @app.get("/maquinas/{maquina_id}")
-def read_maquina(maquina_id: int, db: Session = Depends(get_db)):
+def read_maquina(maquina_id: int, db: Session = Depends(get_db),current_user: models.User = Depends(dependencies.require_role('admin'))):
     maquina = db.query(models.Maquina).filter(models.Maquina.id == maquina_id).first()
     if not maquina:
         raise HTTPException(status_code=404, detail="Machine not found")
