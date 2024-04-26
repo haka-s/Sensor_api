@@ -1,24 +1,34 @@
 from contextlib import asynccontextmanager
+import json
 from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.params import Query
 from sqlalchemy.orm import Session
 from . import models,schemas,auth, dependencies
 from datetime import datetime,timezone,timedelta
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from .mqtt_polling import start_mqtt,stop_mqtt
 from threading import Thread
-
+from fastapi_mqtt import FastMQTT, MQTTConfig
+from typing import Any
+from gmqtt import Client as MQTTClient
+from logging.config import dictConfig
+import logging
+#from .mqtt_polling import mqtt
 app = FastAPI()
-mqtt_thread = Thread(target=start_mqtt)   
+dictConfig(schemas.LogConfig().dict())
+logger = logging.getLogger("SensorApi")
+
+
+mqtt_config = MQTTConfig()
+fast_mqtt = FastMQTT(config=mqtt_config)
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     models.init_db()
-    mqtt_thread.start()
+    fast_mqtt.init_app(app)
     yield
-    stop_mqtt()
-    mqtt_thread.join()
+
 app.router.lifespan_context = lifespan
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+logger.info('hello world')
 def get_db():
     db = models.SessionLocal()
     try:
@@ -26,6 +36,38 @@ def get_db():
     finally:
         db.close()
 
+
+
+async def start_mqtt():
+    await fast_mqtt.connection()
+
+@fast_mqtt.on_connect()
+def connect(client, flags, rc, properties):
+    client.subscribe("maquinas/estacion_2/#")
+    logger.info("Connected and subscribed to topics under 'maquinas/estacion_2'")
+
+@fast_mqtt.on_message()
+def handle_message(client, topic, payload, qos, properties):
+    logger.info(f"Received message on {topic}: {payload.decode()}")
+    process_message(topic, payload.decode())
+
+def process_message(topic, message):
+    parts = topic.split('/')
+    if len(parts) >= 3:
+        station = parts[1]
+        sensor_type = parts[2]
+        sensor_data = json.loads(message)  # Assuming JSON payload
+        logger.info(station,sensor_data,sensor_type)
+
+
+@fast_mqtt.on_disconnect()
+def disconnect(client, packet, exc=None):
+    """
+    Handles MQTT disconnection.
+    """
+    print("Disconnected")
+
+ 
         
 @app.post("/token", response_model=schemas.Token)
 def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):

@@ -1,39 +1,39 @@
-import paho.mqtt.client as mqtt
-import threading
+from fastapi_mqtt import FastMQTT, MQTTConfig
+from .models import SessionLocal, Maquina, Sensor
+from sqlalchemy.orm import Session
 import json
-import paho.mqtt.subscribe as subscribe
-MQTT_BROKER = "localhost"
-MQTT_PORT = 1883
-MQTT_TOPICS = {
-    "motor_externo": "estacion_2/motor_externo",
-    "motor_interno": "estacion_2/motor_interno",
-    "energia": "estacion_2/energia",
-    "caudalimetro": "estacion_2/caudalimetro",
-    "distancia": "estacion_2/distancia",
-    "actividad": "estacion_2/actividad"
-}
 
-def on_connect(client, userdata, flags, rc, properties):
-    print("Connected with result code " + str(rc))
-    # Subscribe to all topics here if connection was successful
-    if rc == 0:
-        for topic in MQTT_TOPICS.values():
-            client.subscribe(topic)
+# MQTT Configuration
+mqtt_config = MQTTConfig(host="localhost", port=1883)
+mqtt = FastMQTT(config=mqtt_config)
 
+def db_session():
+    """Yields a database session."""
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
 
-def on_message(client, userdata, msg):
-    print(f"Received '{msg.payload.decode()}' on topic '{msg.topic}'")
-    # Here, you would handle the message
+@mqtt.on_connect()
+def connect(client, flags, rc, properties):
+    # Subscribe to a pattern
+    client.subscribe("maquinas/estacion_2/#")
+    
+@mqtt.on_message()
+def handle_message(client, topic, payload, qos, properties):
+    print(f"Received message on {topic}: {payload.decode()}")
+    process_message(topic, payload.decode())
 
-def start_mqtt():
-
-    client.connect(MQTT_BROKER, MQTT_PORT, 60)
-
-    client.loop_start()  # Starts the network loop in a non-blocking way
-
-def stop_mqtt():
-    client.loop_stop()  # Stop the network loop
-    client.disconnect()  # Disconnect the client
-client = mqtt.Client(callback_api_version=mqtt.CallbackAPIVersion.VERSION2)
-client.on_connect = on_connect
-client.on_message = on_message
+def process_message(topic, message):
+    # Example topic: machines/machine1/sensor
+    parts = topic.split('/')
+    machine_name = parts[1]
+    sensor_data = json.loads(message)  # Assuming JSON payload
+    print(machine_name,sensor_data)
+    with db_session() as db:
+        machine = db.query(Maquina).filter(Maquina.nombre == machine_name).first()
+        if machine:
+            print('found on db'+machine)
+        else:
+            print('not found' + machine_name)

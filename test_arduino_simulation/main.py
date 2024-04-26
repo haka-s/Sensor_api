@@ -5,12 +5,12 @@ import paho.mqtt.client as mqtt
 MQTT_BROKER = "localhost"
 MQTT_PORT = 1883
 MQTT_TOPICS = {
-    "motor_externo": "estacion_2/motor_externo",
-    "motor_interno": "estacion_2/motor_interno",
-    "energia": "estacion_2/energia",
-    "caudalimetro": "estacion_2/caudalimetro",
-    "distnacia": "estacion_2/distancia",
-    "actividad": "estacion_2/actividad"
+    "motor_externo": "maquinas/estacion_2/motor_externo",
+    "motor_interno": "maquinas/estacion_2/motor_interno",
+    "energia": "maquinas/estacion_2/energia",
+    "caudalimetro": "maquinas/estacion_2/caudalimetro",
+    "distnacia": "maquinas/estacion_2/distancia",
+    "actividad": "maquinas/estacion_2/actividad"
 }
 
 def connect_mqtt():
