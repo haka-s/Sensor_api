@@ -213,4 +213,4 @@ def get_sensor_history(
     if not sensor_data:
         raise HTTPException(status_code=404, detail="No historical data found for this sensor.")
 
-    return [{"value": data.value, "datetime": data.fecha_hora.strftime('%Y-%m-%d %H:%M:%S')} for data in sensor_data]
+    return [{"value": data.valor, "datetime": data.fecha_hora.strftime('%Y-%m-%d %H:%M:%S')} for data in sensor_data]

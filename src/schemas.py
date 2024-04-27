@@ -45,7 +45,7 @@ class SensorHistoryQuery(BaseModel):
         start_date = values.get('start_date')
         end_date = values.get('end_date')
         if  not start_date or not end_date:
-            raise HTTPException(status_code=401, detail="Invalid date parameters!!")
+            raise HTTPException(status_code=401, detail="Parámetros inválidos")
         elif start_date >= end_date:
             raise HTTPException(status_code=403, detail="fecha inicio debe ser menor a fecha final")
         return values
