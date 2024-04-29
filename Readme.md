@@ -47,6 +47,7 @@ La API desarrollada actúa como una interfaz esencial entre los sensores físico
     DB_PASSWORD=""
     DB_NAME=""
     KEY=""
+    HOST_IP=""
     ```
 -   `docker-compose --env-file .env up --build`
 
@@ -58,5 +59,5 @@ La API desarrollada actúa como una interfaz esencial entre los sensores físico
 -   JWT 🔐
 -   PostgreSQL 🔑
 -   Docker 🐳
--   Gmqtt 📢
+-   Asyncio MQTT 📢
 -   Mosquitto 🌐
