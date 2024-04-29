@@ -1,34 +1,47 @@
 from contextlib import asynccontextmanager
 import json
 from fastapi import FastAPI, Depends, HTTPException, status
-from fastapi.params import Query
 from sqlalchemy.orm import Session
 from . import models,schemas,auth, dependencies
 from datetime import datetime,timezone,timedelta
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from threading import Thread
-from fastapi_mqtt import FastMQTT, MQTTConfig
-from typing import Any
-from gmqtt import Client as MQTTClient
+import asyncio
+import aiomqtt
 from logging.config import dictConfig
 import logging
-#from .mqtt_polling import mqtt
-app = FastAPI()
-dictConfig(schemas.LogConfig().dict())
+import os
+
+dictConfig(schemas.LogConfig().model_dump())
 logger = logging.getLogger("SensorApi")
 
-
-mqtt_config = MQTTConfig()
-fast_mqtt = FastMQTT(config=mqtt_config)
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    models.init_db()
-    fast_mqtt.init_app(app)
-    yield
 
-app.router.lifespan_context = lifespan
-logger.info('hello world')
+async def listen(client):
+    async for message in client.messages:
+        pass
+        #logger.info(message.topic)
+        #logger.info(message.payload.decode())
+
+background_tasks = set()
+client = None
+@asynccontextmanager
+async def lifespan(app):
+    models.init_db()
+    global client
+    async with aiomqtt.Client(os.getenv('HOST_IP', 'localhost'),1883,username=None,password=None) as c:
+        client = c
+        await client.subscribe("maquinas/+/+")
+        loop = asyncio.get_event_loop()
+        task = loop.create_task(listen(client))
+        background_tasks.add(task) # work around for blocking issues
+        task.add_done_callback(background_tasks.remove) 
+        yield 
+        task.cancel()
+        try:
+            await task
+        except asyncio.CancelledError:
+            pass
+app = FastAPI(lifespan=lifespan)
 def get_db():
     db = models.SessionLocal()
     try:
@@ -36,38 +49,6 @@ def get_db():
     finally:
         db.close()
 
-
-
-async def start_mqtt():
-    await fast_mqtt.connection()
-
-@fast_mqtt.on_connect()
-def connect(client, flags, rc, properties):
-    client.subscribe("maquinas/estacion_2/#")
-    logger.info("Connected and subscribed to topics under 'maquinas/estacion_2'")
-
-@fast_mqtt.on_message()
-def handle_message(client, topic, payload, qos, properties):
-    logger.info(f"Received message on {topic}: {payload.decode()}")
-    process_message(topic, payload.decode())
-
-def process_message(topic, message):
-    parts = topic.split('/')
-    if len(parts) >= 3:
-        station = parts[1]
-        sensor_type = parts[2]
-        sensor_data = json.loads(message)  # Assuming JSON payload
-        logger.info(station,sensor_data,sensor_type)
-
-
-@fast_mqtt.on_disconnect()
-def disconnect(client, packet, exc=None):
-    """
-    Handles MQTT disconnection.
-    """
-    print("Disconnected")
-
- 
         
 @app.post("/token", response_model=schemas.Token)
 def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
@@ -75,10 +56,13 @@ def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db:
     if not user or not user.verify_password(form_data.password):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Incorrect username or password",
+            detail="usuario o contraseña incorrectas",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    access_token_expires = timedelta(minutes=auth.ACCESS_TOKEN_EXPIRE_MINUTES)
+    if user.role == 'mqqt_broker':
+        access_token_expires = timedelta(minutes=900)
+    else:    
+        access_token_expires = timedelta(minutes=auth.ACCESS_TOKEN_EXPIRE_MINUTES)
     access_token = auth.create_access_token(
         data={"sub": user.username}, expires_delta=access_token_expires
     )
@@ -92,7 +76,7 @@ def read_users_me(current_user: str = Depends(dependencies.get_current_user), db
 def create_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
     db_user = db.query(models.User).filter(models.User.username == user.username).first()
     if db_user:
-        raise HTTPException(status_code=400, detail="Username already registered")
+        raise HTTPException(status_code=400, detail="usuario ya registrado")
     new_user = models.User(username=user.username, role=user.role)
     
     new_user.hash_password(user.password)
@@ -105,7 +89,7 @@ def create_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
 def read_user(user_id: int, db: Session = Depends(get_db)):
     db_user = db.query(models.User).filter(models.User.id == user_id).first()
     if db_user is None:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
     return db_user
 
 @app.post("/maquinas/")
@@ -143,7 +127,6 @@ def create_sensor(sensor_data: schemas.SensorCreate, db: Session = Depends(get_d
     if not machine:
         raise HTTPException(status_code=404, detail="Machine not found")
 
-    # Create new sensor
     new_sensor = models.Sensor(
         tipo_sensor_id=sensor_data.tipo_sensor_id,
         maquina_id=sensor_data.maquina_id,

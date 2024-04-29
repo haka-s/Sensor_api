@@ -1,8 +1,8 @@
 import random
 import time
 import paho.mqtt.client as mqtt
-
-MQTT_BROKER = "localhost"
+import os
+MQTT_BROKER = os.getenv('HOST_IP')
 MQTT_PORT = 1883
 MQTT_TOPICS = {
     "motor_externo": "maquinas/estacion_2/motor_externo",

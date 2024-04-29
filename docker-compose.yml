@@ -1,15 +1,15 @@
-version: '3.8'
 services:
   mosquitto:
     image: eclipse-mosquitto:latest
     ports:
       - "1883:1883"
       - "9001:9001"
+    expose:
+      - 1883
     volumes:
       - mosquitto_data:/mosquitto/data
       - mosquitto_log:/mosquitto/log
       - ./mosquitto.conf:/mosquitto/config/mosquitto.conf
-
   db:
     image: postgres:13
     volumes:
@@ -31,7 +31,6 @@ services:
     depends_on:
       - db
       - mosquitto
-
 volumes:
   postgres_data:
   mosquitto_data:

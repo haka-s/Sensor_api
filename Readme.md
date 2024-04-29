@@ -58,5 +58,5 @@ La API desarrollada actúa como una interfaz esencial entre los sensores físico
 -   JWT 🔐
 -   PostgreSQL 🔑
 -   Docker 🐳
--   Paho-mqtt 📢
+-   Gmqtt 📢
 -   Mosquitto 🌐

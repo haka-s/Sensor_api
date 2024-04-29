@@ -1,12 +1,13 @@
 
 from fastapi import HTTPException
-from pydantic import BaseModel, Field, ValidationError, model_validator
+from pydantic import BaseModel, model_validator
 from typing import List, Optional
 import datetime
 
 class UserCreate(BaseModel):
     username: str
     password: str
+    role: str
 class Token(BaseModel):
     access_token: str
     token_type: str
@@ -16,7 +17,7 @@ class TokenData(BaseModel):
 class UserDisplay(BaseModel):
     id: int
     username: str
-
+    role: str
     class Config:
         from_attributes = True
 class SensorCreate(BaseModel):

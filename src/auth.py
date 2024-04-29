@@ -1,15 +1,23 @@
-from fastapi import HTTPException
-from jose import jwt, ExpiredSignatureError, JWTError
+from jose import jwt
 from datetime import datetime, timedelta, timezone
 import os
 from dotenv import load_dotenv
 from typing import Optional
-from .models import pwd_context
+from logging.config import dictConfig
+import logging
+from .schemas import LogConfig
+
+
+dictConfig(LogConfig().model_dump())
+logger = logging.getLogger("SensorApi")
 
 load_dotenv(os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env'))
-SECRET_KEY = os.getenv('KEY', 'your_default_secret_key')
+SECRET_KEY = os.getenv('KEY', 'Insecure_key')
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
+
+if SECRET_KEY == 'Insecure_key':
+    logger.warn('Estas corriendo una instancia insegura ya que no esta cargada la variable de entorno key, la cual proporciona el cifrado de los tokens jwt')
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode = data.copy()
