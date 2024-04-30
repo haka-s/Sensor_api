@@ -10,8 +10,9 @@ import aiomqtt
 from logging.config import dictConfig
 import logging
 import os
+from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi_users.authentication import BearerTransport
-
+from sqlalchemy.future import select
 from .users import auth_backend, current_active_user, fastapi_users
 bearer_transport = BearerTransport(tokenUrl="auth/jwt/login")
 dictConfig(schemas.LogConfig().model_dump())
@@ -22,8 +23,8 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 async def listen(client):
     async for message in client.messages:
         pass
-        #logger.info(message.topic)
-        #logger.info(message.payload.decode())
+        logger.info(message.topic)
+        logger.info(message.payload.decode())
 
 background_tasks = set()
 client = None
@@ -46,11 +47,9 @@ async def lifespan(app):
             pass
 app = FastAPI(lifespan=lifespan)
 def get_db():
-    db = models.async_session_maker()
-    try:
-        yield db
-    finally:
-        db.close()
+    db = models.get_async_session()
+    yield db
+
 
         
 app.include_router(
@@ -83,11 +82,11 @@ async def authenticated_route(user: models.User = Depends(current_active_user)):
     return {"message": f"Hello {user.email}!"}
 
 @app.post("/maquinas/")
-def create_machine(machine_data: schemas.MachineCreate, db: Session = Depends(get_db)):
+async def create_machine(machine_data: schemas.MachineCreate, db: AsyncSession = Depends(models.get_async_session)):
     new_machine = models.Maquina(nombre=machine_data.nombre)
     db.add(new_machine)
-    db.commit()
-    db.refresh(new_machine)
+    await db.commit()
+    await db.refresh(new_machine)
 
     for sensor_data in machine_data.sensores:
         new_sensor = models.Sensor(
@@ -97,23 +96,25 @@ def create_machine(machine_data: schemas.MachineCreate, db: Session = Depends(ge
             valor=0.0
         )
         db.add(new_sensor)
-    db.commit()
+    await db.commit()
 
     return {"id": new_machine.id, "nombre": new_machine.nombre}
 
 @app.post("/datos-sensor/")
-async def crear_datos_sensor(sensor_id: int, valor: float, db: Session = Depends(get_db)):
-    sensor = db.query(models.Sensor).filter(models.Sensor.id == sensor_id).first()
+async def crear_datos_sensor(sensor_id: int, valor: float, db: AsyncSession = Depends(models.get_async_session)):
+    result = await db.execute(select(models.Sensor).where(models.Sensor.id == sensor_id))
+    sensor = result.scalars().first()
     if not sensor:
         raise HTTPException(status_code=404, detail="Sensor no encontrado")
+    
     datos_sensor = models.Sensor(valor=valor, fecha_hora=datetime.now(timezone.utc), tipo_sensor_id=sensor.tipo_sensor_id, maquina_id=sensor.maquina_id)
     db.add(datos_sensor)
-    db.commit()
+    await db.commit()
     return {"mensaje": "Datos añadidos exitosamente", "datos": datos_sensor}
-
 @app.post("/sensores/")
-def create_sensor(sensor_data: schemas.SensorCreate, db: Session = Depends(get_db)):
-    machine = db.query(models.Maquina).filter(models.Maquina.id == sensor_data.maquina_id).first()
+async def create_sensor(sensor_data: schemas.SensorCreate, db: AsyncSession = Depends(models.get_async_session)):
+    result = await db.execute(select(models.Maquina).where(models.Maquina.id == sensor_data.maquina_id))
+    machine = result.scalars().first()
     if not machine:
         raise HTTPException(status_code=404, detail="Machine not found")
 
@@ -124,33 +125,34 @@ def create_sensor(sensor_data: schemas.SensorCreate, db: Session = Depends(get_d
         valor=sensor_data.valor,
     )
     db.add(new_sensor)
-    db.commit()
-    db.refresh(new_sensor)
+    await db.commit()
+    await db.refresh(new_sensor)
     return {"id": new_sensor.id, "type": new_sensor.tipo_sensor_id}
 
 @app.get("/tipo-sensor/", response_model=schemas.TipoSensorList)
-def list_tipo_sensor(db: Session = Depends(get_db)):
-    sensor_types = db.query(models.TipoSensor).all()
+async def list_tipo_sensor(db: AsyncSession = Depends(models.get_async_session)):
+    result = await db.execute(select(models.TipoSensor))
+    sensor_types = result.scalars().all()
     return schemas.TipoSensorList(tipos=sensor_types)
 
 @app.post("/tipo-sensor/", response_model=schemas.TipoSensorCreate)
-def create_tipo_sensor(sensor_data: schemas.TipoSensorCreate, db: Session = Depends(get_db)):
-    existing_sensor_type = db.query(models.TipoSensor).filter(models.TipoSensor.nombre == sensor_data.nombre).first()
-    if existing_sensor_type:
+async def create_tipo_sensor(sensor_data: schemas.TipoSensorCreate, db: AsyncSession = Depends(models.get_async_session)):
+    existing_sensor_type = await db.execute(select(models.TipoSensor).filter(models.TipoSensor.nombre == sensor_data.nombre))
+    if existing_sensor_type.scalars().first():
         raise HTTPException(status_code=400, detail="Sensor type already exists")
     new_sensor_type = models.TipoSensor(nombre=sensor_data.nombre, unidad=sensor_data.unidad)
     db.add(new_sensor_type)
-    db.commit()
-    db.refresh(new_sensor_type)
+    await db.commit()
+    await db.refresh(new_sensor_type)
     return new_sensor_type
 
 @app.get("/maquinas/{maquina_id}")
-def read_maquina(maquina_id: int, db: Session = Depends(get_db)):
-    maquina = db.query(models.Maquina).filter(models.Maquina.id == maquina_id).first()
+async def read_maquina(maquina_id: int, db: AsyncSession = Depends(models.get_async_session)):
+    result = await db.execute(select(models.Maquina).where(models.Maquina.id == maquina_id))
+    maquina = result.scalars().first()
     if not maquina:
         raise HTTPException(status_code=404, detail="Machine not found")
 
-    # Preparing data for response
     machine_data = {
         "id": maquina.id,
         "nombre": maquina.nombre,
@@ -168,21 +170,22 @@ def read_maquina(maquina_id: int, db: Session = Depends(get_db)):
 
     return machine_data
 @app.get("/sensors/{sensor_id}/history")
-def get_sensor_history(
+async def get_sensor_history(
     sensor_id: int, 
     query: schemas.SensorHistoryQuery = Depends(),
-    db: Session = Depends(get_db)):
+    db: AsyncSession = Depends(models.get_async_session)):
 
     if not query:
         raise HTTPException(status_code=400, detail="Invalid date parameters")
 
-    query_statement = db.query(models.Sensor).filter(models.Sensor.id == sensor_id)
+    query_statement = select(models.Sensor).where(models.Sensor.id == sensor_id)
     if query.start_date:
         query_statement = query_statement.filter(models.Sensor.fecha_hora >= query.start_date)
     if query.end_date:
         query_statement = query_statement.filter(models.Sensor.fecha_hora <= query.end_date)
 
-    sensor_data = query_statement.all()
+    result = await db.execute(query_statement)
+    sensor_data = result.scalars().all()
     if not sensor_data:
         raise HTTPException(status_code=404, detail="No historical data found for this sensor.")
 

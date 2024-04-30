@@ -1,6 +1,6 @@
 from fastapi import Depends
-from sqlalchemy import Column, Integer, Float, Boolean, String, DateTime, ForeignKey
-from sqlalchemy.orm import relationship,DeclarativeBase
+from sqlalchemy import Column, Integer, Float, Boolean, String, DateTime, ForeignKey, create_engine
+from sqlalchemy.orm import relationship,DeclarativeBase,sessionmaker
 from fastapi_users.db import SQLAlchemyBaseUserTableUUID, SQLAlchemyUserDatabase
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from datetime import datetime, timezone
@@ -16,7 +16,6 @@ class Base(DeclarativeBase):
 
 class User(SQLAlchemyBaseUserTableUUID, Base):
     pass
-
 
 engine = create_async_engine(DATABASE_URL)
 async_session_maker = async_sessionmaker(engine, expire_on_commit=False)
@@ -39,14 +38,14 @@ class Maquina(Base):
     __tablename__ = 'maquinas'
     id = Column(Integer, primary_key=True, index=True)
     nombre = Column(String, nullable=False)
-    sensores = relationship("Sensor", back_populates="maquina")
+    sensores = relationship("Sensor", back_populates="maquina", lazy="selectin")
 
 class TipoSensor(Base):
     __tablename__ = 'tipos_sensor'
     id = Column(Integer, primary_key=True, index=True)
     nombre = Column(String, nullable=False)  
     unidad = Column(String, nullable=False) 
-    sensores = relationship("Sensor", back_populates="tipo_sensor")
+    sensores = relationship("Sensor", back_populates="tipo_sensor", lazy="selectin")
 
 class Sensor(Base):
     __tablename__ = 'sensores'
