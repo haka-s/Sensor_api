@@ -1,5 +1,5 @@
 from fastapi_mqtt import FastMQTT, MQTTConfig
-from .models import SessionLocal, Maquina, Sensor
+from .models import async_session_maker, Maquina, Sensor
 from sqlalchemy.orm import Session
 import json
 
@@ -9,7 +9,7 @@ mqtt = FastMQTT(config=mqtt_config)
 
 def db_session():
     """Yields a database session."""
-    db = SessionLocal()
+    db = async_session_maker()
     try:
         yield db
     finally:

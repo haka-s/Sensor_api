@@ -2,8 +2,8 @@
 API sensores todo list
 
 ### Tareas Pendientes
-- [ ] require auth and admin roles for all post except user creation
-- [ ] define role of users
+- [x] require auth and admin roles for all post except user registration
+- [x] define role of users
 - [ ] error handling for disconnections to broker
 - [ ] JWT integration with mosquitto
 - [ ] automatic Sensor and sensor type creation based on topics

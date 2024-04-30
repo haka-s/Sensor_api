@@ -1,31 +1,39 @@
-from sqlalchemy import Column, Integer, Float, Boolean, String, DateTime, ForeignKey, create_engine
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker, relationship
+from fastapi import Depends
+from sqlalchemy import Column, Integer, Float, Boolean, String, DateTime, ForeignKey
+from sqlalchemy.orm import relationship,DeclarativeBase
+from fastapi_users.db import SQLAlchemyBaseUserTableUUID, SQLAlchemyUserDatabase
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from datetime import datetime, timezone
-from passlib.context import CryptContext
 import os
 from dotenv import load_dotenv
-
+from typing import AsyncGenerator
 load_dotenv(os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env'))
 
-DATABASE_URL = f"postgresql://{os.environ['DB_USER']}:{os.environ['DB_PASSWORD']}@db/{os.environ['DB_NAME']}"  
+DATABASE_URL = f"postgresql+asyncpg://{os.environ['DB_USER']}:{os.environ['DB_PASSWORD']}@db/{os.environ['DB_NAME']}"  
+class Base(DeclarativeBase):
+    pass
 
-engine = create_engine(DATABASE_URL)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-Base = declarative_base()
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-class User(Base):
-    __tablename__ = 'users'
-    id = Column(Integer, primary_key=True, index=True)
-    username = Column(String, unique=True, index=True)
-    hashed_password = Column(String)
-    role = Column(String)
-    def verify_password(self, password):
-        return pwd_context.verify(password, self.hashed_password)
+class User(SQLAlchemyBaseUserTableUUID, Base):
+    pass
 
-    def hash_password(self, password):
-        self.hashed_password = pwd_context.hash(password)
+
+engine = create_async_engine(DATABASE_URL)
+async_session_maker = async_sessionmaker(engine, expire_on_commit=False)
+
+
+async def create_db_and_tables():
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
+
+async def get_async_session() -> AsyncGenerator[AsyncSession, None]:
+    async with async_session_maker() as session:
+        yield session
+
+
+async def get_user_db(session: AsyncSession = Depends(get_async_session)):
+    yield SQLAlchemyUserDatabase(session, User)
 
 class Maquina(Base):
     __tablename__ = 'maquinas'
@@ -51,5 +59,3 @@ class Sensor(Base):
     tipo_sensor = relationship("TipoSensor", back_populates="sensores")
     maquina = relationship("Maquina", back_populates="sensores")
 
-def init_db():
-    Base.metadata.create_all(bind=engine)

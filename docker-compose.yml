@@ -4,8 +4,6 @@ services:
     ports:
       - "1883:1883"
       - "9001:9001"
-    expose:
-      - 1883
     volumes:
       - mosquitto_data:/mosquitto/data
       - mosquitto_log:/mosquitto/log
@@ -20,7 +18,6 @@ services:
       POSTGRES_DB: ${DB_NAME}
     ports:
       - "5432:5432"
-
   web:
     build: .
     command: uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload

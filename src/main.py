@@ -2,7 +2,7 @@ from contextlib import asynccontextmanager
 import json
 from fastapi import FastAPI, Depends, HTTPException, status
 from sqlalchemy.orm import Session
-from . import models,schemas,auth, dependencies
+from . import models,schemas
 from datetime import datetime,timezone,timedelta
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 import asyncio
@@ -10,7 +10,10 @@ import aiomqtt
 from logging.config import dictConfig
 import logging
 import os
+from fastapi_users.authentication import BearerTransport
 
+from .users import auth_backend, current_active_user, fastapi_users
+bearer_transport = BearerTransport(tokenUrl="auth/jwt/login")
 dictConfig(schemas.LogConfig().model_dump())
 logger = logging.getLogger("SensorApi")
 
@@ -26,7 +29,7 @@ background_tasks = set()
 client = None
 @asynccontextmanager
 async def lifespan(app):
-    models.init_db()
+    await models.create_db_and_tables()
     global client
     async with aiomqtt.Client(os.getenv('HOST_IP', 'localhost'),1883,username=None,password=None) as c:
         client = c
@@ -43,54 +46,41 @@ async def lifespan(app):
             pass
 app = FastAPI(lifespan=lifespan)
 def get_db():
-    db = models.SessionLocal()
+    db = models.async_session_maker()
     try:
         yield db
     finally:
         db.close()
 
         
-@app.post("/token", response_model=schemas.Token)
-def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
-    user = db.query(models.User).filter(models.User.username == form_data.username).first()
-    if not user or not user.verify_password(form_data.password):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="usuario o contraseña incorrectas",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    if user.role == 'mqqt_broker':
-        access_token_expires = timedelta(minutes=900)
-    else:    
-        access_token_expires = timedelta(minutes=auth.ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = auth.create_access_token(
-        data={"sub": user.username}, expires_delta=access_token_expires
-    )
-    return {"access_token": access_token, "token_type": "bearer"}
+app.include_router(
+    fastapi_users.get_auth_router(auth_backend), prefix="/auth/jwt", tags=["auth"]
+)
+app.include_router(
+    fastapi_users.get_register_router(schemas.UserRead, schemas.UserCreate),
+    prefix="/auth",
+    tags=["auth"],
+)
+app.include_router(
+    fastapi_users.get_reset_password_router(),
+    prefix="/auth",
+    tags=["auth"],
+)
+app.include_router(
+    fastapi_users.get_verify_router(schemas.UserRead),
+    prefix="/auth",
+    tags=["auth"],
+)
+app.include_router(
+    fastapi_users.get_users_router(schemas.UserRead, schemas.UserUpdate),
+    prefix="/users",
+    tags=["users"],
+)
 
-@app.get("/users/me", response_model=schemas.UserDisplay)
-def read_users_me(current_user: str = Depends(dependencies.get_current_user), db: Session = Depends(get_db)):
-    user = db.query(models.User).filter(models.User.username == current_user).first()
-    return user
-@app.post("/users/", response_model=schemas.UserDisplay)
-def create_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
-    db_user = db.query(models.User).filter(models.User.username == user.username).first()
-    if db_user:
-        raise HTTPException(status_code=400, detail="usuario ya registrado")
-    new_user = models.User(username=user.username, role=user.role)
-    
-    new_user.hash_password(user.password)
-    db.add(new_user)
-    db.commit()
-    db.refresh(new_user)
-    return new_user
 
-@app.get("/users/{user_id}", response_model=schemas.UserDisplay)
-def read_user(user_id: int, db: Session = Depends(get_db)):
-    db_user = db.query(models.User).filter(models.User.id == user_id).first()
-    if db_user is None:
-        raise HTTPException(status_code=404, detail="Usuario no encontrado")
-    return db_user
+@app.get("/authenticated-route")
+async def authenticated_route(user: models.User = Depends(current_active_user)):
+    return {"message": f"Hello {user.email}!"}
 
 @app.post("/maquinas/")
 def create_machine(machine_data: schemas.MachineCreate, db: Session = Depends(get_db)):
@@ -144,7 +134,7 @@ def list_tipo_sensor(db: Session = Depends(get_db)):
     return schemas.TipoSensorList(tipos=sensor_types)
 
 @app.post("/tipo-sensor/", response_model=schemas.TipoSensorCreate)
-def create_tipo_sensor(sensor_data: schemas.TipoSensorCreate, db: Session = Depends(get_db),current_user: models.User = Depends(dependencies.require_role('admin'))):
+def create_tipo_sensor(sensor_data: schemas.TipoSensorCreate, db: Session = Depends(get_db)):
     existing_sensor_type = db.query(models.TipoSensor).filter(models.TipoSensor.nombre == sensor_data.nombre).first()
     if existing_sensor_type:
         raise HTTPException(status_code=400, detail="Sensor type already exists")
@@ -155,7 +145,7 @@ def create_tipo_sensor(sensor_data: schemas.TipoSensorCreate, db: Session = Depe
     return new_sensor_type
 
 @app.get("/maquinas/{maquina_id}")
-def read_maquina(maquina_id: int, db: Session = Depends(get_db),current_user: models.User = Depends(dependencies.require_role('admin'))):
+def read_maquina(maquina_id: int, db: Session = Depends(get_db)):
     maquina = db.query(models.Maquina).filter(models.Maquina.id == maquina_id).first()
     if not maquina:
         raise HTTPException(status_code=404, detail="Machine not found")

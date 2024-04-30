@@ -3,23 +3,22 @@ from fastapi import HTTPException
 from pydantic import BaseModel, model_validator
 from typing import List, Optional
 import datetime
+import uuid
 
-class UserCreate(BaseModel):
-    username: str
-    password: str
-    role: str
-class Token(BaseModel):
-    access_token: str
-    token_type: str
+from fastapi_users import schemas
 
-class TokenData(BaseModel):
-    username: Optional[str] = None
-class UserDisplay(BaseModel):
-    id: int
-    username: str
-    role: str
-    class Config:
-        from_attributes = True
+
+class UserRead(schemas.BaseUser[uuid.UUID]):
+    pass
+
+
+class UserCreate(schemas.BaseUserCreate):
+    pass
+
+
+class UserUpdate(schemas.BaseUserUpdate):
+    pass
+
 class SensorCreate(BaseModel):
     tipo_sensor_id: int
     maquina_id: int
