@@ -16,7 +16,7 @@ def create_sensor_types():
         print(f"Tipo de sensor creado {sensor_type['nombre']}: Estado {response.status_code}")
 
 def create_machine():
-    machine_data = {"nombre": "Estacion 2"}
+    machine_data = {"nombre": "estacion_2"}
     response = requests.post(f"{base_url}/maquinas/", json=machine_data)
     if response.status_code == 200:
         machine_id = response.json()['id']

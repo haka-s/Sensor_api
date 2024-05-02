@@ -11,28 +11,37 @@ from fastapi_users.authentication import (
 import os
 from dotenv import load_dotenv
 from fastapi_users.db import SQLAlchemyUserDatabase
-
 from .models import User, get_user_db
-
+from logging.config import dictConfig
+import logging
+from . import schemas
+dictConfig(schemas.LogConfig().model_dump())
+logger = logging.getLogger("SensorApi")
 load_dotenv(os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env'))
 SECRET_KEY = os.getenv('KEY', 'Insecure_key')
-
+if SECRET_KEY == 'Insecure_key':
+    logger.warn('''no esta cargada la variable SECRET_KEY estas es necesaria para el correcto funcionamiento del sistema de autenticación
+                podes generarla con el siguiente comando python -c 'import secrets; print(secrets.token_urlsafe(26))
+                luego debe ser ingresada en el archivo .env
+                '''
+                
+                )
 
 class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
     reset_password_token_secret = SECRET_KEY
     verification_token_secret = SECRET_KEY
     async def on_after_register(self, user: User, request: Optional[Request] = None):
-        print(f"User {user.id} has registered.")
+        logger.info(f"el usuario {user.id} fue registrado.")
 
     async def on_after_forgot_password(
         self, user: User, token: str, request: Optional[Request] = None
     ):
-        print(f"User {user.id} has forgot their password. Reset token: {token}")
+        logger.info(f"el usuario {user.id} olvido su contraseña, Reset token: {token}")
 
     async def on_after_request_verify(
         self, user: User, token: str, request: Optional[Request] = None
     ):
-        print(f"Verification requested for user {user.id}. Verification token: {token}")
+        logger.info(f"verificación para el usuario {user.id}. Verification token: {token}")
 
 
 async def get_user_manager(user_db: SQLAlchemyUserDatabase = Depends(get_user_db)):

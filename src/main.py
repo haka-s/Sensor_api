@@ -20,11 +20,6 @@ logger = logging.getLogger("SensorApi")
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
-async def listen(client):
-    async for message in client.messages:
-        pass
-        logger.info(message.topic)
-        logger.info(message.payload.decode())
 
 background_tasks = set()
 client = None
@@ -49,6 +44,64 @@ app = FastAPI(lifespan=lifespan)
 def get_db():
     db = models.get_async_session()
     yield db
+    
+    
+async def listen(client):
+    db_session: get_db
+    async for message in client.messages:
+        logger.info(f"Topic: {message.topic}")
+        logger.info(f"Payload: {message.payload.decode()}")
+
+        
+        topic_parts = message.topic.split('/')
+        if len(topic_parts) != 3:
+            logger.error("Invalid topic format")
+            continue
+
+        _, maquina, tipo_sensor_nombre = topic_parts  
+        maquina_id = select(models.Maquina).where(models.Maquina.nombre==maquina)
+        try:
+            sensor_data = json.loads(message.payload.decode())
+            sensor_value = sensor_data['value']
+        except (json.JSONDecodeError, KeyError):
+            logger.error("Invalid payload data")
+            continue
+
+        try:
+            tipo_sensor_stmt = select(models.TipoSensor).where(models.TipoSensor.nombre == tipo_sensor_nombre)
+            tipo_sensor_result = await db_session.execute(tipo_sensor_stmt)
+            tipo_sensor = tipo_sensor_result.scalars().first()
+
+            if tipo_sensor is None:
+                logger.error("Sensor no encontrado")
+                continue
+
+            
+            sensor_stmt = select(models.Sensor).where(
+                models.Sensor.maquina_id == maquina_id,
+                models.Sensor.tipo_sensor_id == tipo_sensor.id
+            )
+            sensor_result = await db_session.execute(sensor_stmt)
+            sensor = sensor_result.scalars().first()
+
+            if sensor is None:
+                sensor = models.Sensor(
+                    maquina_id=maquina_id,
+                    tipo_sensor_id=tipo_sensor.id,
+                    estado=True,  
+                )
+                db_session.add(sensor)
+
+            
+            sensor.valor = sensor_value
+            sensor.fecha_hora = datetime.now(timezone.utc)
+
+            await db_session.commit()
+            logger.info(f"Sensor data updated for {tipo_sensor.nombre} on machine {maquina}")
+
+        except Exception as e:
+            logger.error(f"Database error: {e}")
+            await db_session.rollback()
 
 
         
