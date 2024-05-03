@@ -34,6 +34,7 @@ def publish(client):
         
         # Simulate Flow Rate Sensor
         flow_rate = random.uniform(0, 100)  # Simulates flow rate in liters per minute
+        state = random.choice([True, False])
         client.publish(MQTT_TOPICS["caudalimetro"], f"{flow_rate:.2f}")
         
         # Simulate Distance Measurement Sensor

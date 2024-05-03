@@ -52,57 +52,68 @@ async def listen(client):
         logger.info(f"Topic: {message.topic}")
         logger.info(f"Payload: {message.payload.decode()}")
 
+        if not validate_topic(message.topic):  # Check if topic is valid
+            continue  # Skip to the next message if the topic is invalid
         
-        topic_parts = message.topic.split('/')
-        if len(topic_parts) != 3:
-            logger.error("Invalid topic format")
-            continue
+        maquina, tipo_sensor_nombre = parse_topic(message.topic)
+        if maquina is None or tipo_sensor_nombre is None:
+            continue  # This continue might be redundant if validate_topic always ensures correct parsing
 
-        _, maquina, tipo_sensor_nombre = topic_parts  
-        maquina_id = select(models.Maquina).where(models.Maquina.nombre==maquina)
         try:
             sensor_data = json.loads(message.payload.decode())
-            sensor_value = sensor_data['value']
+            await process_sensor_data(db_session, maquina, tipo_sensor_nombre, sensor_data)
         except (json.JSONDecodeError, KeyError):
             logger.error("Invalid payload data")
-            continue
-
-        try:
-            tipo_sensor_stmt = select(models.TipoSensor).where(models.TipoSensor.nombre == tipo_sensor_nombre)
-            tipo_sensor_result = await db_session.execute(tipo_sensor_stmt)
-            tipo_sensor = tipo_sensor_result.scalars().first()
-
-            if tipo_sensor is None:
-                logger.error("Sensor no encontrado")
-                continue
-
-            
-            sensor_stmt = select(models.Sensor).where(
-                models.Sensor.maquina_id == maquina_id,
-                models.Sensor.tipo_sensor_id == tipo_sensor.id
-            )
-            sensor_result = await db_session.execute(sensor_stmt)
-            sensor = sensor_result.scalars().first()
-
-            if sensor is None:
-                sensor = models.Sensor(
-                    maquina_id=maquina_id,
-                    tipo_sensor_id=tipo_sensor.id,
-                    estado=True,  
-                )
-                db_session.add(sensor)
-
-            
-            sensor.valor = sensor_value
-            sensor.fecha_hora = datetime.now(timezone.utc)
-
-            await db_session.commit()
-            logger.info(f"Sensor data updated for {tipo_sensor.nombre} on machine {maquina}")
-
         except Exception as e:
-            logger.error(f"Database error: {e}")
-            await db_session.rollback()
+            logger.error(f"Error processing sensor data: {e}")
 
+def validate_topic(topic):
+    logger.info('validation')
+    topic_parts = topic.split('/')
+    logger.info(topic_parts)
+    if len(topic_parts) != 3:
+        logger.error("Invalid topic format")
+        return False
+    return True
+
+def parse_topic(topic):
+    logger.info('parse')
+    _, maquina, tipo_sensor_nombre = topic.split('/')
+    return maquina, tipo_sensor_nombre
+
+async def process_sensor_data(db_session, maquina, tipo_sensor_nombre, sensor_data):
+    logger.info('process')
+    sensor_value = sensor_data['value']
+    maquina_id = select(models.Maquina).where(models.Maquina.nombre == maquina)
+
+    tipo_sensor_stmt = select(models.TipoSensor).where(models.TipoSensor.nombre == tipo_sensor_nombre)
+    tipo_sensor_result = await db_session.execute(tipo_sensor_stmt)
+    tipo_sensor = tipo_sensor_result.scalars().first()
+
+    if tipo_sensor is None:
+        logger.error("Sensor no encontrado")
+        return
+
+    sensor_stmt = select(models.Sensor).where(
+        models.Sensor.maquina_id == maquina_id,
+        models.Sensor.tipo_sensor_id == tipo_sensor.id
+    )
+    sensor_result = await db_session.execute(sensor_stmt)
+    sensor = sensor_result.scalars().first()
+
+    if sensor is None:
+        sensor = models.Sensor(
+            maquina_id=maquina_id,
+            tipo_sensor_id=tipo_sensor.id,
+            estado=True,
+        )
+        db_session.add(sensor)
+
+    sensor.valor = sensor_value
+    sensor.fecha_hora = datetime.now(timezone.utc)
+
+    await db_session.commit()
+    logger.info(f"Sensor data updated for {tipo_sensor.nombre} on machine {maquina}")
 
         
 app.include_router(
