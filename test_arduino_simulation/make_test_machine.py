@@ -4,16 +4,14 @@ base_url = "http://localhost:8000"
 
 def create_sensor_types():
     sensor_types = [
-        {"nombre": "Sensor de Encendido/Apagado de Motor (Externo)", "unidad": "binario"},
-        {"nombre": "Sensor de Encendido/Apagado de Motor (Interno)", "unidad": "binario"},
-        {"nombre": "Sensor de Medición de Corriente", "unidad": "amperes"},
-        {"nombre": "Caudalímetro", "unidad": "litros por minuto"},
-        {"nombre": "Sensor de Medición de Distancia", "unidad": "metros"},
-        {"nombre": "Sensor de Detección de Actividad", "unidad": "binario"}
+        {"tipo": "binario", "unidad": "binario"},
+        {"tipo": "energia", "unidad": "amperes"},
+        {"tipo": "volumen", "unidad": "litros por minuto"},
+        {"tipo": "distancia", "unidad": "metros"},
     ]
     for sensor_type in sensor_types:
         response = requests.post(f"{base_url}/tipo-sensor/", json=sensor_type)
-        print(f"Tipo de sensor creado {sensor_type['nombre']}: Estado {response.status_code}")
+        print(f"Tipo de sensor creado {sensor_type['tipo']}: Estado {response.status_code}")
 
 def create_machine():
     machine_data = {"nombre": "estacion_2"}
@@ -29,12 +27,12 @@ def create_machine():
 def create_sensors(machine_id):
 
     sensor_creations = [
-        {"tipo_sensor_id": 1, "maquina_id": machine_id, "estado": False, "valor": 0.0},  # Sensor de Encendido/Apagado de Motor (Externo)
-        {"tipo_sensor_id": 2, "maquina_id": machine_id, "estado": False, "valor": 0.0},  # Sensor de Encendido/Apagado de Motor (Interno)
-        {"tipo_sensor_id": 3, "maquina_id": machine_id, "estado": False, "valor": 0.0},  # Sensor de Medición de Corriente
-        {"tipo_sensor_id": 4, "maquina_id": machine_id, "estado": False, "valor": 0.0},  # Caudalímetro
-        {"tipo_sensor_id": 5, "maquina_id": machine_id, "estado": False, "valor": 0.0},  # Sensor de Medición de Distancia
-        {"tipo_sensor_id": 6, "maquina_id": machine_id, "estado": False, "valor": 0.0}   # Sensor de Detección de Actividad
+        {"tipo_sensor_id": 1,"nombre":"motor_externo", "maquina_id": machine_id, "estado": False, "valor": 0.0},  # Sensor de Encendido/Apagado de Motor (Externo)
+        {"tipo_sensor_id": 1,"nombre":"motor_interno", "maquina_id": machine_id, "estado": False, "valor": 0.0},  # Sensor de Encendido/Apagado de Motor (Interno)
+        {"tipo_sensor_id": 2,"nombre":"torcha", "maquina_id": machine_id, "estado": False, "valor": 0.0},  # Sensor de Medición de Corriente
+        {"tipo_sensor_id": 3,"nombre":"caudalimetro", "maquina_id": machine_id, "estado": False, "valor": 0.0},  # Caudalímetro
+        {"tipo_sensor_id": 4,"nombre":"encoder", "maquina_id": machine_id, "estado": False, "valor": 0.0},  # Sensor de Medición de Distancia
+        {"tipo_sensor_id": 1,"nombre":"actividad", "maquina_id": machine_id, "estado": False, "valor": 0.0}   # Sensor de Detección de Actividad
     ]
     for sensor in sensor_creations:
         response = requests.post(f"{base_url}/sensores/", json=sensor)

@@ -3,12 +3,23 @@ from sqlalchemy import Column, Integer, Float, Boolean, String, DateTime, Foreig
 from sqlalchemy.orm import relationship,DeclarativeBase,sessionmaker
 from fastapi_users.db import SQLAlchemyBaseUserTableUUID, SQLAlchemyUserDatabase
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from datetime import datetime, timezone
+from datetime import datetime, timezone,tzinfo,timedelta
 import os
 from dotenv import load_dotenv
 from typing import AsyncGenerator
+from sqlalchemy.types import TIMESTAMP
 load_dotenv(os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env'))
+ZERO = timedelta(0)
 
+class UTC(tzinfo):
+  def utcoffset(self, dt):
+    return ZERO
+  def tzname(self, dt):
+    return "UTC"
+  def dst(self, dt):
+    return ZERO
+
+utc = UTC()
 DATABASE_URL = f"postgresql+asyncpg://{os.environ['DB_USER']}:{os.environ['DB_PASSWORD']}@db/{os.environ['DB_NAME']}"  
 class Base(DeclarativeBase):
     pass
@@ -43,7 +54,7 @@ class Maquina(Base):
 class TipoSensor(Base):
     __tablename__ = 'tipos_sensor'
     id = Column(Integer, primary_key=True, index=True)
-    nombre = Column(String, nullable=False)  
+    tipo = Column(String, nullable=False)  
     unidad = Column(String, nullable=False) 
     sensores = relationship("Sensor", back_populates="tipo_sensor", lazy="selectin")
 
@@ -52,9 +63,10 @@ class Sensor(Base):
     id = Column(Integer, primary_key=True, index=True)
     tipo_sensor_id = Column(Integer, ForeignKey('tipos_sensor.id'))
     maquina_id = Column(Integer, ForeignKey('maquinas.id'))
+    nombre = Column(String, nullable=False)  
     estado = Column(Boolean)
     valor = Column(Float)
-    fecha_hora = Column(DateTime, default=datetime.now(timezone.utc))
+    fecha_hora = Column(type_=TIMESTAMP(timezone=True), default=datetime.now(timezone.utc))
     tipo_sensor = relationship("TipoSensor", back_populates="sensores")
     maquina = relationship("Maquina", back_populates="sensores")
 

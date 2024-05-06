@@ -5,12 +5,12 @@ import os
 MQTT_BROKER = os.getenv('HOST_IP')
 MQTT_PORT = 1883
 MQTT_TOPICS = {
-    "motor_externo": "maquinas/estacion_2/motor_externo",
-    "motor_interno": "maquinas/estacion_2/motor_interno",
-    "energia": "maquinas/estacion_2/energia",
-    "caudalimetro": "maquinas/estacion_2/caudalimetro",
-    "distnacia": "maquinas/estacion_2/distancia",
-    "actividad": "maquinas/estacion_2/actividad"
+    "motor_externo": "maquinas/estacion_2/binario/motor_externo",
+    "motor_interno": "maquinas/estacion_2/binario/motor_interno",
+    "energia": "maquinas/estacion_2/energia/torcha",
+    "caudalimetro": "maquinas/estacion_2/volumen/caudalimetro",
+    "distnacia": "maquinas/estacion_2/distancia/encoder",
+    "actividad": "maquinas/estacion_2/binario/actividad"
 }
 
 def connect_mqtt():

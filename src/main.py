@@ -3,7 +3,7 @@ import json
 from fastapi import FastAPI, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from . import models,schemas
-from datetime import datetime,timezone,timedelta
+from datetime import tzinfo,datetime,timezone,timedelta
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 import asyncio
 import aiomqtt
@@ -29,7 +29,7 @@ async def lifespan(app):
     global client
     async with aiomqtt.Client(os.getenv('HOST_IP', 'localhost'),1883,username=None,password=None) as c:
         client = c
-        await client.subscribe("maquinas/+/+")
+        await client.subscribe("maquinas/+/+/+")
         loop = asyncio.get_event_loop()
         task = loop.create_task(listen(client))
         background_tasks.add(task) # work around for blocking issues
@@ -55,13 +55,13 @@ async def listen(client):
         if not validate_topic(message.topic):  # Check if topic is valid
             continue  # Skip to the next message if the topic is invalid
         
-        maquina, tipo_sensor_nombre = parse_topic(message.topic)
+        maquina, tipo_sensor_nombre,sensor = parse_topic(message.topic)
         if maquina is None or tipo_sensor_nombre is None:
             continue  # This continue might be redundant if validate_topic always ensures correct parsing
 
         try:
             sensor_data = json.loads(message.payload.decode())
-            await process_sensor_data(db_session, maquina, tipo_sensor_nombre, sensor_data)
+            await process_sensor_data(db_session, maquina, tipo_sensor_nombre,sensor, sensor_data)
         except (json.JSONDecodeError, KeyError):
             logger.error("Invalid payload data")
         except Exception as e:
@@ -71,17 +71,17 @@ def validate_topic(topic):
     logger.info('validation')
     topic_parts = topic.split('/')
     logger.info(topic_parts)
-    if len(topic_parts) != 3:
+    if len(topic_parts) != 4:
         logger.error("Invalid topic format")
         return False
     return True
 
 def parse_topic(topic):
     logger.info('parse')
-    _, maquina, tipo_sensor_nombre = topic.split('/')
-    return maquina, tipo_sensor_nombre
+    _, maquina, tipo_sensor_nombre,sensor = topic.split('/')
+    return maquina, tipo_sensor_nombre,sensor
 
-async def process_sensor_data(db_session, maquina, tipo_sensor_nombre, sensor_data):
+async def process_sensor_data(db_session, maquina, tipo_sensor_nombre,sensor, sensor_data):
     logger.info('process')
     sensor_value = sensor_data['value']
     maquina_id = select(models.Maquina).where(models.Maquina.nombre == maquina)
@@ -113,7 +113,7 @@ async def process_sensor_data(db_session, maquina, tipo_sensor_nombre, sensor_da
     sensor.fecha_hora = datetime.now(timezone.utc)
 
     await db_session.commit()
-    logger.info(f"Sensor data updated for {tipo_sensor.nombre} on machine {maquina}")
+    logger.info(f"Sensor data updated for {tipo_sensor.tipo} on machine {maquina}")
 
         
 app.include_router(
@@ -223,7 +223,7 @@ async def read_maquina(maquina_id: int, db: AsyncSession = Depends(models.get_as
         "sensores": [
             {
                 "id": sensor.id,
-                "tipo": sensor.tipo_sensor.nombre,
+                "tipo": sensor.tipo_sensor.tipo,
                 "unidad": sensor.tipo_sensor.unidad,
                 "estado": sensor.estado,
                 "valor": sensor.valor,
