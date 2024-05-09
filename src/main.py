@@ -17,7 +17,7 @@ from .users import auth_backend, current_active_user, fastapi_users
 bearer_transport = BearerTransport(tokenUrl="auth/jwt/login")
 dictConfig(schemas.LogConfig().model_dump())
 logger = logging.getLogger("SensorApi")
-
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 background_tasks = set()
 client = None
 
@@ -39,7 +39,7 @@ async def lifespan(app):
             await task
         except asyncio.CancelledError:
             pass
-        await client.disconnect()
+        
 
 app = FastAPI(lifespan=lifespan)
 @asynccontextmanager

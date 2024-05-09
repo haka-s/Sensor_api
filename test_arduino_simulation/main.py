@@ -46,7 +46,7 @@ def publish(client):
         client.publish(MQTT_TOPICS["actividad"], str(activity_status))
 
         print("Data sent to all topics")
-        time.sleep(5)  # Send a message every 5 seconds for all sensors
+        time.sleep(1)  # Send a message every 5 seconds for all sensors
 
 if __name__ == "__main__":
     mqtt_client = connect_mqtt()
