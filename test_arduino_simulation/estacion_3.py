@@ -2,15 +2,15 @@ import random
 import time
 import paho.mqtt.client as mqtt
 import os
-MQTT_BROKER = 'localhost'
+MQTT_BROKER = os.getenv('HOST_IP')
 MQTT_PORT = 1883
 MQTT_TOPICS = {
-    "motor_externo": "maquinas/estacion_2/boolean/motor_externo",
-    "motor_interno": "maquinas/estacion_2/boolean/motor_interno",
-    "energia": "maquinas/estacion_2/energia/torcha",
-    "caudalimetro": "maquinas/estacion_2/volumen/caudalimetro",
-    "distnacia": "maquinas/estacion_2/distancia/encoder",
-    "actividad": "maquinas/estacion_2/boolean/actividad"
+    "motor_externo": "maquinas/estacion_3/boolean/motor_externo",
+    "motor_interno": "maquinas/estacion_3/boolean/motor_interno",
+    "energia": "maquinas/estacion_3/energia/torcha",
+    "caudalimetro": "maquinas/estacion_3/volumen/caudalimetro",
+    "distnacia": "maquinas/estacion_3/distancia/encoder",
+    "actividad": "maquinas/estacion_3/boolean/actividad"
 }
 
 def connect_mqtt():

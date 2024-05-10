@@ -1,7 +1,7 @@
 from contextlib import asynccontextmanager
 import json
 from fastapi import FastAPI, Depends, HTTPException, status
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import selectinload,joinedload
 from . import models,schemas
 from datetime import tzinfo,datetime,timezone,timedelta
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
@@ -13,6 +13,8 @@ import os
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi_users.authentication import BearerTransport
 from sqlalchemy.future import select
+from sqlalchemy.orm import aliased
+from sqlalchemy import and_, desc, func
 from .users import auth_backend, current_active_user, fastapi_users
 bearer_transport = BearerTransport(tokenUrl="auth/jwt/login")
 dictConfig(schemas.LogConfig().model_dump())
@@ -81,44 +83,31 @@ async def process_sensor_data(db_session, maquina, tipo_sensor_nombre, sensor_na
     maquina_obj = await get_or_create(db_session, models.Maquina, nombre=maquina)
     tipo_sensor = await get_or_create(db_session, models.TipoSensor, tipo=tipo_sensor_nombre)
 
-    sensor = await get_or_create(
-        db_session,
-        models.Sensor,
-        nombre=sensor_name,
+    # Create a new sensor data record instead of updating an existing one
+    new_sensor_data = models.Sensor(
         maquina_id=maquina_obj.id,
-        tipo_sensor_id=tipo_sensor.id
+        tipo_sensor_id=tipo_sensor.id,
+        nombre=sensor_name,
+        estado=convert_to_boolean(sensor_data),
+        valor=convert_to_float(sensor_data),
+        fecha_hora=datetime.now(timezone.utc)
     )
-
-    if isinstance(sensor_data, str):
-            # Check if the string is 'True' or 'False'
-        if sensor_data.lower() == 'true':
-            sensor.valor = 1.0
-            sensor.estado = True
-        elif sensor_data.lower() == 'false':
-            sensor.valor = 0.0
-            sensor.estado = False
-        else:
-            try:
-                # Attempt to convert other strings to float
-                sensor.valor = float(sensor_data)
-                sensor.estado = sensor.valor != 0.0
-            except ValueError:
-                logger.error(f"Could not convert string to float: '{sensor_data}'")
-                return 
-    elif isinstance(sensor_data, bool):
-        sensor.valor = 1.0 if sensor_data else 0.0
-        sensor.estado = sensor_data
-    elif isinstance(sensor_data, (int, float)):
-        sensor.valor = float(sensor_data)
-        sensor.estado = sensor.valor != 0.0
-    else:
-        logger.error(f"Unsupported type for sensor data: {type(sensor_data).__name__}")
-        return  # Exit the function or handle the error as appropriate
-
-    sensor.fecha_hora = datetime.now(timezone.utc)
+    db_session.add(new_sensor_data)
     await db_session.commit()
-    logger.info(f"Sensor '{sensor_name}' updated for machine '{maquina}' with type '{tipo_sensor_nombre}'.")
+    logger.info(f"New sensor data recorded for '{sensor_name}' in machine '{maquina}' with type '{tipo_sensor_nombre}'.")
+def convert_to_boolean(sensor_data):
+    if isinstance(sensor_data, str):
+        return sensor_data.lower() in ['true', '1', 't', 'y', 'yes']
+    return bool(sensor_data)
 
+def convert_to_float(sensor_data):
+    if isinstance(sensor_data, str) and sensor_data.lower() in ['true', 'false']:
+        return 1.0 if sensor_data.lower() == 'true' else 0.0
+    try:
+        return float(sensor_data)
+    except ValueError:
+        logger.error(f"Could not convert data to float: '{sensor_data}'")
+        return 0.0  # Default value or handle error appropriately
 async def get_or_create(db_session, model, **kwargs):
     instance = await db_session.execute(select(model).filter_by(**kwargs))
     instance = instance.scalars().first()
@@ -178,29 +167,57 @@ async def create_tipo_sensor(sensor_data: schemas.TipoSensorCreate,db: AsyncSess
 
 @app.get("/maquinas/{maquina_id}")
 async def read_maquina(maquina_id: int, db: AsyncSession = Depends(models.get_async_no_context_session)):
-    result = await db.execute(select(models.Maquina).where(models.Maquina.id == maquina_id).options(
-        selectinload(models.Maquina.sensores).selectinload(models.Sensor.tipo_sensor)
-    ))
-    maquina = result.scalars().first()
-    if not maquina:
-        raise HTTPException(status_code=404, detail="Maquina no encontrada")
+    async with db as session:
+        #sensor_alias = aliased(models.Sensor)
+        subquery = (
+            select(
+                models.Sensor.tipo_sensor_id,
+                func.max(models.Sensor.fecha_hora).label("max_fecha_hora")
+            )
+            .where(models.Sensor.maquina_id == maquina_id)
+            .group_by(models.Sensor.tipo_sensor_id)
+            .subquery()
+        )
 
-    machine_data = {
-        "id": maquina.id,
-        "nombre": maquina.nombre,
-        "sensores": [
-            {
-                "id": sensor.id,
-                "tipo": sensor.tipo_sensor.tipo,
-                "unidad": sensor.tipo_sensor.unidad,
-                "estado": sensor.estado,
-                "valor": sensor.valor,
-                "fecha_hora": sensor.fecha_hora
-            } for sensor in maquina.sensores
-        ]
-    }
+        ultimo_sensor_query = (
+            select(models.Sensor)
+            .join(
+                subquery,
+                (models.Sensor.tipo_sensor_id == subquery.c.tipo_sensor_id) &
+                (models.Sensor.fecha_hora == subquery.c.max_fecha_hora)
+            )
+            .order_by(desc(models.Sensor.fecha_hora))
+            .options(joinedload(models.Sensor.tipo_sensor))
+        )
 
-    return machine_data
+        maquina_result = await session.execute(
+            select(models.Maquina)
+            .where(models.Maquina.id == maquina_id)
+            .options(selectinload(models.Maquina.sensores).joinedload(models.Sensor.tipo_sensor))
+        )
+        maquina = maquina_result.scalars().first()
+        if not maquina:
+            raise HTTPException(status_code=404, detail="Machine not found")
+
+        ultimo_sensor_data = await session.execute(ultimo_sensor_query)
+        ultimos_sensores = ultimo_sensor_data.scalars().all()
+
+        maquina_data = {
+            "id": maquina.id,
+            "nombre": maquina.nombre,
+            "sensores": [
+                {
+                    "id": sensor.id,
+                    "tipo": sensor.tipo_sensor.tipo,
+                    "unidad": sensor.tipo_sensor.unidad,
+                    "estado": sensor.estado,
+                    "valor": sensor.valor,
+                    "fecha_hora": sensor.fecha_hora
+                } for sensor in ultimos_sensores
+            ]
+        }
+
+        return maquina_data
 @app.get("/sensors/{sensor_id}/history")
 async def get_sensor_history(
     sensor_id: int, 
