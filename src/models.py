@@ -42,7 +42,7 @@ async def initialize_sensor_types():
             {"tipo": "boolean", "unidad": "estado"},
             {"tipo": "distancia", "unidad": "metros"},
             {"tipo": "velocidad", "unidad": "metros/segundo"},
-            {"tipo": "energia", "unidad": "kWh"},  # Adjusted for electrical energy
+            {"tipo": "energia", "unidad": "kWh"},  
             {"tipo": "presion", "unidad": "pascal"},
             {"tipo": "volumen", "unidad": "litros"},
             {"tipo": "temperatura", "unidad": "grados Celsius"}
@@ -93,3 +93,11 @@ class Sensor(Base):
     tipo_sensor = relationship("TipoSensor", back_populates="sensores")
     maquina = relationship("Maquina", back_populates="sensores")
 
+class EventoCritico(Base):
+    __tablename__ = 'evento_critico'
+    id = Column(Integer, primary_key=True, index=True)    
+
+class Notificaciones(Base):
+    __tablename__ = 'notificaciones'
+    id = Column(Integer, primary_key=True, index=True)
+    

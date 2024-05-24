@@ -1,6 +1,6 @@
 from contextlib import asynccontextmanager
 import json
-from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi import FastAPI, Depends, HTTPException, status,Query
 from sqlalchemy.orm import selectinload,joinedload
 from . import models,schemas
 from datetime import tzinfo,datetime,timezone,timedelta
@@ -168,28 +168,32 @@ async def create_tipo_sensor(sensor_data: schemas.TipoSensorCreate,db: AsyncSess
 @app.get("/maquinas/{maquina_id}")
 async def read_maquina(maquina_id: int, db: AsyncSession = Depends(models.get_async_no_context_session)):
     async with db as session:
-        #sensor_alias = aliased(models.Sensor)
+        # Construct the subquery to find the latest sensor entry by type and name
         subquery = (
             select(
                 models.Sensor.tipo_sensor_id,
+                models.Sensor.nombre,
                 func.max(models.Sensor.fecha_hora).label("max_fecha_hora")
             )
             .where(models.Sensor.maquina_id == maquina_id)
-            .group_by(models.Sensor.tipo_sensor_id)
+            .group_by(models.Sensor.tipo_sensor_id, models.Sensor.nombre)
             .subquery()
         )
 
+        # Retrieve the latest sensors based on the subquery
         ultimo_sensor_query = (
             select(models.Sensor)
             .join(
                 subquery,
                 (models.Sensor.tipo_sensor_id == subquery.c.tipo_sensor_id) &
+                (models.Sensor.nombre == subquery.c.nombre) &
                 (models.Sensor.fecha_hora == subquery.c.max_fecha_hora)
             )
             .order_by(desc(models.Sensor.fecha_hora))
             .options(joinedload(models.Sensor.tipo_sensor))
         )
 
+        # Fetch machine details
         maquina_result = await session.execute(
             select(models.Maquina)
             .where(models.Maquina.id == maquina_id)
@@ -199,43 +203,78 @@ async def read_maquina(maquina_id: int, db: AsyncSession = Depends(models.get_as
         if not maquina:
             raise HTTPException(status_code=404, detail="Machine not found")
 
+        # Execute the sensor query
         ultimo_sensor_data = await session.execute(ultimo_sensor_query)
         ultimos_sensores = ultimo_sensor_data.scalars().all()
 
+        # Serialize machine and sensor data
         maquina_data = {
             "id": maquina.id,
             "nombre": maquina.nombre,
             "sensores": [
                 {
                     "id": sensor.id,
+                    "nombre": sensor.nombre,
                     "tipo": sensor.tipo_sensor.tipo,
                     "unidad": sensor.tipo_sensor.unidad,
                     "estado": sensor.estado,
                     "valor": sensor.valor,
-                    "fecha_hora": sensor.fecha_hora
+                    "fecha_hora": sensor.fecha_hora.isoformat()
                 } for sensor in ultimos_sensores
             ]
         }
 
         return maquina_data
-@app.get("/sensors/{sensor_id}/history")
-async def get_sensor_history(
-    sensor_id: int, 
-    query: schemas.SensorHistoryQuery = Depends(),
+@app.get("/machines/{machine_id}/sensors/history")
+async def get_sensors_history(
+    machine_id: int,
+    sensor_name: str = Query(None, description="Filter by sensor name"),
+    sensor_type: str = Query(None, description="Filter by sensor type"),
+    start_date: datetime = Query(None, description="Start date for history in YYYY-MM-DD HH:MM:SS format"),
+    end_date: datetime = Query(None, description="End date for history in YYYY-MM-DD HH:MM:SS format"),
     db: AsyncSession = Depends(models.get_async_no_context_session)):
 
-    if not query:
-        raise HTTPException(status_code=400, detail="Formato de fecha no valido debe ser %Y-%m-%d %H:%M:%S")
+    # Construct the subquery to find the latest sensor entries based on filters
+    subquery = (
+        select(
+            models.Sensor.id,
+            func.max(models.Sensor.fecha_hora).label("max_fecha_hora")
+        )
+        .where(models.Sensor.maquina_id == machine_id)
+        .group_by(models.Sensor.id)
+        .subquery()
+    )
 
-    query_statement = select(models.Sensor).where(models.Sensor.id == sensor_id)
-    if query.start_date:
-        query_statement = query_statement.filter(models.Sensor.fecha_hora >= query.start_date)
-    if query.end_date:
-        query_statement = query_statement.filter(models.Sensor.fecha_hora <= query.end_date)
+    # Create the main query using the subquery to ensure only latest data is fetched
+    sensors_query = (
+        select(models.Sensor)
+        .join(subquery, (models.Sensor.id == subquery.c.id) & (models.Sensor.fecha_hora == subquery.c.max_fecha_hora))
+        .options(joinedload(models.Sensor.tipo_sensor))
+    )
 
-    result = await db.execute(query_statement)
-    sensor_data = result.scalars().all()
-    if not sensor_data:
-        raise HTTPException(status_code=404, detail="No hay datos históricos sobre este sensor para el periodo seleccionado")
+    # Apply additional filters if they are provided
+    if sensor_name:
+        sensors_query = sensors_query.filter(models.Sensor.nombre == sensor_name)
+    if sensor_type:
+        sensors_query = sensors_query.filter(models.Sensor.tipo_sensor.has(tipo=sensor_type))
+    if start_date:
+        sensors_query = sensors_query.filter(models.Sensor.fecha_hora >= start_date)
+    if end_date:
+        sensors_query = sensors_query.filter(models.Sensor.fecha_hora <= end_date)
 
-    return [{"value": data.valor, "datetime": data.fecha_hora.strftime('%Y-%m-%d %H:%M:%S')} for data in sensor_data]
+    # Execute the query
+    sensors_data = await db.execute(sensors_query)
+    sensors = sensors_data.scalars().all()
+
+    # Handle no data found
+    if not sensors:
+        raise HTTPException(status_code=404, detail="No historical data found for the specified criteria.")
+
+    # Format and return the data
+    return [{
+        "sensor_id": sensor.id,
+        "sensor_name": sensor.nombre,
+        "sensor_type": sensor.tipo_sensor.tipo,
+        "value": sensor.valor,
+        "datetime": sensor.fecha_hora.isoformat()
+    } for sensor in sensors]
