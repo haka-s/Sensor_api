@@ -225,56 +225,56 @@ async def read_maquina(maquina_id: int, db: AsyncSession = Depends(models.get_as
         }
 
         return maquina_data
-@app.get("/machines/{machine_id}/sensors/history")
-async def get_sensors_history(
-    machine_id: int,
-    sensor_name: str = Query(None, description="Filter by sensor name"),
-    sensor_type: str = Query(None, description="Filter by sensor type"),
-    start_date: datetime = Query(None, description="Start date for history in YYYY-MM-DD HH:MM:SS format"),
-    end_date: datetime = Query(None, description="End date for history in YYYY-MM-DD HH:MM:SS format"),
+@app.get("/maquinas/{maquina_id}/sensores/historial")
+async def obtener_historial_sensores(
+    maquina_id: int,
+    nombre_sensor: str = Query(None, description="Filtrar por nombre del sensor"),
+    tipo_sensor: str = Query(None, description="Filtrar por tipo de sensor"),
+    fecha_inicio: datetime = Query(None, description="Fecha de inicio del historial en formato YYYY-MM-DD HH:MM:SS"),
+    fecha_fin: datetime = Query(None, description="Fecha de fin del historial en formato YYYY-MM-DD HH:MM:SS"),
     db: AsyncSession = Depends(models.get_async_no_context_session)):
 
-    # Construct the subquery to find the latest sensor entries based on filters
+    # Construir la subconsulta para encontrar las últimas entradas de sensores según los filtros
     subquery = (
         select(
             models.Sensor.id,
             func.max(models.Sensor.fecha_hora).label("max_fecha_hora")
         )
-        .where(models.Sensor.maquina_id == machine_id)
+        .where(models.Sensor.maquina_id == maquina_id)
         .group_by(models.Sensor.id)
         .subquery()
     )
 
-    # Create the main query using the subquery to ensure only latest data is fetched
-    sensors_query = (
+    # Crear la consulta principal usando la subconsulta para asegurar que solo se obtengan los datos más recientes
+    sensores_query = (
         select(models.Sensor)
         .join(subquery, (models.Sensor.id == subquery.c.id) & (models.Sensor.fecha_hora == subquery.c.max_fecha_hora))
         .options(joinedload(models.Sensor.tipo_sensor))
     )
 
-    # Apply additional filters if they are provided
-    if sensor_name:
-        sensors_query = sensors_query.filter(models.Sensor.nombre == sensor_name)
-    if sensor_type:
-        sensors_query = sensors_query.filter(models.Sensor.tipo_sensor.has(tipo=sensor_type))
-    if start_date:
-        sensors_query = sensors_query.filter(models.Sensor.fecha_hora >= start_date)
-    if end_date:
-        sensors_query = sensors_query.filter(models.Sensor.fecha_hora <= end_date)
+    # Aplicar filtros adicionales si se proporcionan
+    if nombre_sensor:
+        sensores_query = sensores_query.filter(models.Sensor.nombre == nombre_sensor)
+    if tipo_sensor:
+        sensores_query = sensores_query.filter(models.Sensor.tipo_sensor.has(tipo=tipo_sensor))
+    if fecha_inicio:
+        sensores_query = sensores_query.filter(models.Sensor.fecha_hora >= fecha_inicio)
+    if fecha_fin:
+        sensores_query = sensores_query.filter(models.Sensor.fecha_hora <= fecha_fin)
 
-    # Execute the query
-    sensors_data = await db.execute(sensors_query)
-    sensors = sensors_data.scalars().all()
+    # Ejecutar la consulta
+    sensores_data = await db.execute(sensores_query)
+    sensores = sensores_data.scalars().all()
 
-    # Handle no data found
-    if not sensors:
-        raise HTTPException(status_code=404, detail="No historical data found for the specified criteria.")
+    # Manejar el caso de no encontrar datos
+    if not sensores:
+        raise HTTPException(status_code=404, detail="No se encontraron datos históricos para los criterios especificados.")
 
-    # Format and return the data
+    # Formatear y devolver los datos
     return [{
         "sensor_id": sensor.id,
-        "sensor_name": sensor.nombre,
-        "sensor_type": sensor.tipo_sensor.tipo,
-        "value": sensor.valor,
-        "datetime": sensor.fecha_hora.isoformat()
-    } for sensor in sensors]
+        "nombre_sensor": sensor.nombre,
+        "tipo_sensor": sensor.tipo_sensor.tipo,
+        "valor": sensor.valor,
+        "fecha_hora": sensor.fecha_hora.isoformat()
+    } for sensor in sensores]
