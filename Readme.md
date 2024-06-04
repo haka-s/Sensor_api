@@ -61,3 +61,7 @@ La API desarrollada actúa como una interfaz esencial entre los sensores físico
 -   Docker 🐳
 -   Asyncio MQTT 📢
 -   Mosquitto 🌐
+
+## Project Todo List
+
+For a complete list of tasks and enhancements planned for this project, see the [Todo List](ToDo.md).
