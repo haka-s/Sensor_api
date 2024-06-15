@@ -93,11 +93,21 @@ class Sensor(Base):
     tipo_sensor = relationship("TipoSensor", back_populates="sensores")
     maquina = relationship("Maquina", back_populates="sensores")
 
-class EventoCritico(Base):
-    __tablename__ = 'evento_critico'
-    id = Column(Integer, primary_key=True, index=True)    
+class EventosCriticos(Base):
+    __tablename__ = 'eventos_criticos' 
+    id = Column(Integer, primary_key=True, index=True)
+    timestamp = Column(DateTime)
+    sensor_id = Column(Integer)
+    value = Column(Float)
+    description = Column(String)
 
 class Notificaciones(Base):
     __tablename__ = 'notificaciones'
     id = Column(Integer, primary_key=True, index=True)
-    
+    event_id = Column(Integer, ForeignKey('eventos_criticos.id'))
+    sent_to = Column(String)
+    sent_timestamp = Column(DateTime)
+    status = Column(String)
+    evento_critico = relationship("EventosCriticos", back_populates="notificaciones")
+
+EventosCriticos.notificaciones = relationship("Notificaciones", order_by=Notificaciones.id, back_populates="evento_critico")
