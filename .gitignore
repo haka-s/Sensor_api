@@ -1,5 +1,8 @@
 __pycache__/
 env/
-
-
+.pem
 .env
+*.pem
+*.pfx
+*.cer
+*.crt

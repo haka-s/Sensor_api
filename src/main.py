@@ -43,7 +43,7 @@ async def lifespan(app):
             pass
         
 
-app = FastAPI(lifespan=lifespan)
+app = FastAPI(lifespan=lifespan,root_path="/api/")
 @asynccontextmanager
 async def get_db():
     async with models.get_async_session() as session:
