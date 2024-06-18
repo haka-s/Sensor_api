@@ -41,6 +41,7 @@ La API desarrollada actúa como una interfaz esencial entre los sensores físico
 -   `touch .env`
 > [!IMPORTANT]
 > es recomendable generar la key con el siguiente comando : `python -c 'import secrets; print(secrets.token_urlsafe(26))'`
+
 > [!IMPORTANT]
 > para generar un certificado self signed para testing utiliza openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout certs/privkey.pem -out certs/fullchain.pem -subj "/CN=localhost"
 > de otro modo puedes utilizar let's encrypt para generar automáticamente un certificado
