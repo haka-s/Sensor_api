@@ -19,7 +19,7 @@ from .users import auth_backend, current_active_user, fastapi_users
 from scipy import stats
 from fastapi_mail import FastMail, MessageSchema, ConnectionConfig
 from fpdf import FPDF
-
+import numpy as np
 bearer_transport = BearerTransport(tokenUrl="auth/jwt/login")
 dictConfig(schemas.LogConfig().model_dump())
 logger = logging.getLogger("SensorApi")
@@ -161,8 +161,12 @@ async def analizar_anomalias(sesion_db, nuevo_dato):
         return  # No hay suficientes datos para análisis
 
     # Calcular Z-score
-    media = stats.mean(valores_historicos)
-    desviacion_estandar = stats.stdev(valores_historicos)
+    media = np.mean(valores_historicos)
+    desviacion_estandar = np.std(valores_historicos, ddof=1)  # ddof=1 para muestra
+    
+    if desviacion_estandar == 0:
+        return  # Evitar división por cero
+    
     z_score = (nuevo_dato.valor - media) / desviacion_estandar
 
     # Definir umbral para eventos críticos
@@ -180,7 +184,6 @@ async def analizar_anomalias(sesion_db, nuevo_dato):
 
         # Generar notificación
         await generar_notificacion(sesion_db, evento_critico)
-
 async def generar_notificacion(sesion_db, evento_critico,usuario: models.User = Depends(current_active_user)):
     notificacion = models.Notificaciones(
         event_id=evento_critico.id,
@@ -453,11 +456,11 @@ async def analizar_tendencias(
     if not datos:
         raise HTTPException(status_code=404, detail="No se encontraron datos para el análisis")
 
-    valores = [dato.valor for dato in datos]
+    valores = np.array([dato.valor for dato in datos])
     fechas = [dato.fecha_hora for dato in datos]
 
     # Calcular tendencia lineal
-    x = range(len(valores))
+    x = np.arange(len(valores))
     pendiente, intercepto, r_valor, p_valor, error_estandar = stats.linregress(x, valores)
 
     tendencia = "creciente" if pendiente > 0 else "decreciente" if pendiente < 0 else "estable"
@@ -465,11 +468,10 @@ async def analizar_tendencias(
     return {
         "sensor": sensor_nombre,
         "tendencia": tendencia,
-        "pendiente": pendiente,
-        "r_cuadrado": r_valor**2,
-        "datos": [{"fecha": fecha.isoformat(), "valor": valor} for fecha, valor in zip(fechas, valores)]
+        "pendiente": float(pendiente),
+        "r_cuadrado": float(r_valor**2),
+        "datos": [{"fecha": fecha.isoformat(), "valor": float(valor)} for fecha, valor in zip(fechas, valores)]
     }
-
 @app.get("/resumen-maquina/{maquina_id}")
 async def obtener_resumen_maquina(
     maquina_id: int,
