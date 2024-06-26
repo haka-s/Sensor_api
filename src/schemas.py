@@ -1,62 +1,115 @@
-
-from fastapi import HTTPException
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, EmailStr, Field
 from typing import List, Optional
-import datetime
+from datetime import datetime
 import uuid
-
 from fastapi_users import schemas
-
 
 class UserRead(schemas.BaseUser[uuid.UUID]):
     pass
 
-
 class UserCreate(schemas.BaseUserCreate):
     pass
-
 
 class UserUpdate(schemas.BaseUserUpdate):
     pass
 
-class SensorCreate(BaseModel):
+class TipoSensorBase(BaseModel):
+    tipo: str
+    unidad: str
+
+class TipoSensorCreate(TipoSensorBase):
+    pass
+
+class TipoSensorRead(TipoSensorBase):
+    id: int
+
+    class Config:
+        from_attributes = True
+
+class TipoSensorList(BaseModel):
+    tipos: List[TipoSensorRead]
+
+class SensorBase(BaseModel):
+    nombre: str
     tipo_sensor_id: int
     maquina_id: int
-    estado: bool
-    valor: float
-    
-class MachineCreate(BaseModel):
+    estado: Optional[bool] = None
+    valor: Optional[float] = None
+
+class SensorCreate(SensorBase):
+    pass
+
+class SensorRead(SensorBase):
+    id: int
+    fecha_hora: datetime
+
+    class Config:
+        from_attributes = True
+
+class MaquinaBase(BaseModel):
     nombre: str
+
+class MaquinaCreate(MaquinaBase):
     sensores: List[SensorCreate] = []
-    
-class TipoSensorCreate(BaseModel):
-    nombre: str
-    unidad: str
-    
-class TipoSensorList(BaseModel):
-    tipos: List[TipoSensorCreate]
+
+class MaquinaRead(MaquinaBase):
+    id: int
+    sensores: List[SensorRead] = []
+
+    class Config:
+        from_attributes = True
+
+class EventoCriticoBase(BaseModel):
+    sensor_id: int
+    value: float
+    description: str
+
+class EventoCriticoCreate(EventoCriticoBase):
+    timestamp: datetime = Field(default_factory=datetime.utcnow)
+
+class EventoCriticoRead(EventoCriticoBase):
+    id: int
+    timestamp: datetime
+
+    class Config:
+        from_attributes = True
+
+class NotificacionBase(BaseModel):
+    event_id: int
+    sent_to: EmailStr
+    status: str
+
+class NotificacionCreate(NotificacionBase):
+    sent_timestamp: datetime = Field(default_factory=datetime.utcnow)
+
+class NotificacionRead(NotificacionBase):
+    id: int
+    sent_timestamp: datetime
+
+    class Config:
+        from_attributes = True
 
 class SensorHistoryQuery(BaseModel):
-    start_date: Optional[datetime.datetime] = None
-    end_date: Optional[datetime.datetime] = None
+    start_date: Optional[datetime] = None
+    end_date: Optional[datetime] = None
 
-    @model_validator(mode='before')
-    def check_dates(cls, values):
-        start_date = values.get('start_date')
-        end_date = values.get('end_date')
-        if  not start_date or not end_date:
-            raise HTTPException(status_code=401, detail="Parámetros inválidos")
-        elif start_date >= end_date:
-            raise HTTPException(status_code=403, detail="fecha inicio debe ser menor a fecha final")
-        return values
+class AnalisisTendencia(BaseModel):
+    sensor: str
+    tendencia: str
+    pendiente: float
+    r_cuadrado: float
+    datos: List[dict]
+
+class ResumenMaquina(BaseModel):
+    maquina: str
+    ultimo_estado: List[dict]
+    eventos_recientes: List[dict]
+
 class LogConfig(BaseModel):
-    """Logging configuration to be set for the server"""
-
     LOGGER_NAME: str = "SensorApi"
     LOG_FORMAT: str = "%(levelprefix)s | %(asctime)s | %(message)s"
     LOG_LEVEL: str = "DEBUG"
 
-    # Logging config
     version: int = 1
     disable_existing_loggers: bool = False
     formatters: dict = {
@@ -72,7 +125,6 @@ class LogConfig(BaseModel):
             "class": "logging.StreamHandler",
             "stream": "ext://sys.stderr",
         },
-
     }
     loggers: dict = {
         LOGGER_NAME: {"handlers": ["default"], "level": LOG_LEVEL},

@@ -10,3 +10,6 @@ aiomqtt==2.1.0
 python-multipart==0.0.9
 python-dotenv==1.0.1
 paho-mqtt==2.0.0
+scipy
+fastapi-mail
+fpdf

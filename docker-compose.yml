@@ -41,9 +41,9 @@ services:
       - ./certs:/etc/nginx/certs
     ports:
       - "1883:1883"
-      - "80:80"
+      - "89:80"
       - "443:443"
-      - "9001"
+      - "9001:9001"
     depends_on:
       - web
       - mosquitto
