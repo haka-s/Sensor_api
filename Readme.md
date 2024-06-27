@@ -43,8 +43,9 @@ La API desarrollada actúa como una interfaz esencial entre los sensores físico
 > es recomendable generar la key con el siguiente comando : `python -c 'import secrets; print(secrets.token_urlsafe(26))'`
 
 > [!IMPORTANT]
-> para generar un certificado self signed para testing utiliza `openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout certs/privkey.pem -out certs/fullchain.pem -subj "/CN=localhost"`
+> para generar un certificado self signed para testing utiliza `openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout certs/privkey.pem -out certs/fullchain.pem -config localhost.cnf"`
 > de otro modo puedes utilizar let's encrypt para generar automáticamente un certificado
+> en windows se puede convertir el certificado para poder importarlo a la entidad de certificación de confianza `openssl x509 -outform der -in certs/fullchain.pem -out localhost.cer`
 
 -   dentro del archivo .env
     ```
