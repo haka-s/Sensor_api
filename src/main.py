@@ -253,18 +253,15 @@ app.include_router(
     tags=["users"],
 )
 
-@app.get("/ruta-autenticada")
-async def ruta_autenticada(usuario: models.User = Depends(current_active_user)):
-    return {"mensaje": f"¡Hola {usuario.email}!"}
 
 @app.get("/tipo-sensor/", response_model=schemas.TipoSensorList)
-async def listar_tipos_sensor(db: AsyncSession = Depends(models.get_async_no_context_session)):
+async def listar_tipos_sensor(db: AsyncSession = Depends(models.get_async_no_context_session),usuario: models.User = Depends(current_active_user)):
     resultado = await db.execute(select(models.TipoSensor))
     tipos_sensor = resultado.scalars().all()
     return schemas.TipoSensorList(tipos=tipos_sensor)
 
 @app.post("/tipo-sensor/", response_model=schemas.TipoSensorCreate)
-async def crear_tipo_sensor(datos_sensor: schemas.TipoSensorCreate, db: AsyncSession = Depends(models.get_async_no_context_session)):
+async def crear_tipo_sensor(datos_sensor: schemas.TipoSensorCreate, db: AsyncSession = Depends(models.get_async_no_context_session),usuario: models.User = Depends(current_active_user)):
     tipo_sensor_existente = await db.execute(select(models.TipoSensor).filter(models.TipoSensor.nombre == datos_sensor.nombre))
     if tipo_sensor_existente.scalars().first():
         raise HTTPException(status_code=400, detail="Ya existe este tipo de sensor")
@@ -275,7 +272,7 @@ async def crear_tipo_sensor(datos_sensor: schemas.TipoSensorCreate, db: AsyncSes
     return nuevo_tipo_sensor
 
 @app.get("/maquinas/{maquina_id}")
-async def leer_maquina(maquina_id: int, db: AsyncSession = Depends(models.get_async_no_context_session)):
+async def leer_maquina(maquina_id: int, db: AsyncSession = Depends(models.get_async_no_context_session),usuario: models.User = Depends(current_active_user)):
     async with db as sesion:
         subconsulta = (
             select(
@@ -337,8 +334,8 @@ async def obtener_historial_sensores(
     tipo_sensor: str = Query(None, description="Filtrar por tipo de sensor"),
     fecha_inicio: datetime = Query(None, description="Fecha de inicio del historial en formato YYYY-MM-DD HH:MM:SS"),
     fecha_fin: datetime = Query(None, description="Fecha de fin del historial en formato YYYY-MM-DD HH:MM:SS"),
-    db: AsyncSession = Depends(models.get_async_no_context_session)):
-
+    db: AsyncSession = Depends(models.get_async_no_context_session),usuario: models.User = Depends(current_active_user)):
+    
     # Construir la subconsulta para encontrar las últimas entradas de sensores según los filtros
     subconsulta = (
         select(
@@ -389,7 +386,7 @@ async def listar_eventos_criticos(
     db: AsyncSession = Depends(models.get_async_no_context_session),
     skip: int = 0,
     limit: int = 100
-):
+,usuario: models.User = Depends(current_active_user)):
     resultado = await db.execute(
         select(models.EventosCriticos)
         .order_by(models.EventosCriticos.timestamp.desc())
@@ -404,7 +401,7 @@ async def listar_notificaciones(
     db: AsyncSession = Depends(models.get_async_no_context_session),
     skip: int = 0,
     limit: int = 100
-):
+,usuario: models.User = Depends(current_active_user)):
     resultado = await db.execute(
         select(models.Notificaciones)
         .order_by(models.Notificaciones.sent_timestamp.desc())
@@ -419,7 +416,7 @@ async def reenviar_notificacion(
     notificacion_id: int,
     tareas_fondo: BackgroundTasks,
     db: AsyncSession = Depends(models.get_async_no_context_session)
-    ):
+    ,usuario: models.User = Depends(current_active_user)):
     notificacion = await db.get(models.Notificaciones, notificacion_id)
     if not notificacion:
         raise HTTPException(status_code=404, detail="Notificación no encontrada")
@@ -439,7 +436,7 @@ async def analizar_tendencias(
     sensor_nombre: str,
     dias: int = Query(7, description="Número de días para el análisis"),
     db: AsyncSession = Depends(models.get_async_no_context_session)
-):
+,usuario: models.User = Depends(current_active_user)):
     fecha_limite = datetime.now(timezone.utc) - timedelta(days=dias)
     
     resultado = await db.execute(
@@ -476,7 +473,7 @@ async def analizar_tendencias(
 async def obtener_resumen_maquina(
     maquina_id: int,
     db: AsyncSession = Depends(models.get_async_no_context_session)
-):
+,usuario: models.User = Depends(current_active_user)):
     maquina = await db.get(models.Maquina, maquina_id)
     if not maquina:
         raise HTTPException(status_code=404, detail="Máquina no encontrada")
