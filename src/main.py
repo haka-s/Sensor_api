@@ -1,9 +1,9 @@
 from contextlib import asynccontextmanager
 import json
 from typing import List
-from fastapi import FastAPI, Depends, HTTPException, status, Query, BackgroundTasks
+from fastapi import APIRouter, FastAPI, Depends, HTTPException, status, Query, BackgroundTasks
 from sqlalchemy.orm import selectinload, joinedload
-from . import models, schemas
+from . import models, schemas,users
 from datetime import datetime, timezone, timedelta
 from fastapi.security import OAuth2PasswordBearer
 import asyncio
@@ -20,6 +20,7 @@ from scipy import stats
 from fastapi_mail import FastMail, MessageSchema, ConnectionConfig
 from fpdf import FPDF
 import numpy as np
+
 bearer_transport = BearerTransport(tokenUrl="auth/jwt/login")
 dictConfig(schemas.LogConfig().model_dump())
 logger = logging.getLogger("SensorApi")
@@ -41,6 +42,7 @@ conf_correo = ConnectionConfig(
 )
 
 fastmail = FastMail(conf_correo)
+
 
 @asynccontextmanager
 async def lifespan(app):
@@ -227,7 +229,7 @@ def generar_pdf_evento(evento_critico):
     pdf.cell(200, 10, txt=f"Valor: {evento_critico.value}", ln=1)
     pdf.cell(200, 10, txt=f"Descripción: {evento_critico.description}", ln=1)
     return pdf.output(dest="S").encode("latin1")
-
+verify_router = APIRouter()
 # Rutas de autenticación y usuarios
 app.include_router(
     fastapi_users.get_auth_router(auth_backend), prefix="/auth/jwt", tags=["auth"]
@@ -242,11 +244,22 @@ app.include_router(
     prefix="/auth",
     tags=["auth"],
 )
-app.include_router(
-    fastapi_users.get_verify_router(schemas.UserRead),
-    prefix="/auth",
-    tags=["auth"],
-)
+@verify_router.post("/verify")
+async def verify_email(
+    verify_data: schemas.VerifyEmailSchema,
+    user_manager: users.UserManager = Depends(users.get_user_manager)
+):
+    user = await user_manager.get_by_email(verify_data.email)
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    
+    if await user_manager.verify_user(user, verify_data.code):
+        return {"message": "Correo electrónico verificado exitosamente"}
+    else:
+        raise HTTPException(status_code=400, detail="Código de verificación inválido")
+app.include_router(verify_router, prefix="/auth", tags=["auth"])
+
+
 app.include_router(
     fastapi_users.get_users_router(schemas.UserRead, schemas.UserUpdate),
     prefix="/users",

@@ -18,7 +18,8 @@ class Base(DeclarativeBase):
     pass
 
 class User(SQLAlchemyBaseUserTableUUID, Base):
-    pass
+    is_verified = Column(Boolean, default=False, nullable=False)
+    verification_code = Column(String, nullable=True)
 
 engine = create_async_engine(DATABASE_URL)
 async_session_maker = async_sessionmaker(engine, expire_on_commit=False)

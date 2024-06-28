@@ -25,7 +25,9 @@ class TipoSensorRead(TipoSensorBase):
 
     class Config:
         from_attributes = True
-
+class VerifyEmailSchema(BaseModel):
+    email: str
+    code: str
 class TipoSensorList(BaseModel):
     tipos: List[TipoSensorRead]
 
