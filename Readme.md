@@ -54,6 +54,13 @@ La API desarrollada actúa como una interfaz esencial entre los sensores físico
     DB_NAME=""
     KEY=""
     HOST_IP=""
+    USE_MAIL=False
+    MAIL_USERNAME=
+    MAIL_PASSWORD=
+    MAIL_FROM= 
+    MAIL_SERVER=smtp.google.com
+    MAIL_STARTTLS=True
+    MAIL_SSL_TLS=True
     ```
 -   `docker-compose --env-file .env up --build`
 
