@@ -1,3 +1,4 @@
+from datetime import datetime, timedelta, timezone
 import uuid
 from typing import Optional
 
@@ -18,10 +19,12 @@ from . import schemas
 import random
 import string
 from fastapi_mail import FastMail, MessageSchema, ConnectionConfig
+import secrets
 dictConfig(schemas.LogConfig().model_dump())
 logger = logging.getLogger("SensorApi")
 load_dotenv(os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env'))
 SECRET_KEY = os.getenv('KEY', 'Insecure_key')
+USE_EMAILING = os.getenv("USE_EMAILING", False)
 if SECRET_KEY == 'Insecure_key':
     logger.warn('''no esta cargada la variable SECRET_KEY estas es necesaria para el correcto funcionamiento del sistema de autenticación
                 podes generarla con el siguiente comando python -c 'import secrets; print(secrets.token_urlsafe(26))
@@ -29,19 +32,20 @@ if SECRET_KEY == 'Insecure_key':
                 '''
                 
                 )
-conf_correo = ConnectionConfig(
-    MAIL_USERNAME = str(os.getenv("MAIL_USERNAME")),
-    MAIL_PASSWORD = str(os.getenv("MAIL_PASSWORD")),
-    MAIL_FROM = str("sistemas@bauduccosa.com.ar"),
-    MAIL_PORT = 25,
-    MAIL_SERVER = str(os.getenv("MAIL_SERVER")),
-    MAIL_STARTTLS = os.getenv("MAIL_STARTTLS", "True").lower() == "true",
-    MAIL_SSL_TLS = os.getenv("MAIL_SSL_TLS", "False").lower() == "true",
-    USE_CREDENTIALS = True,
-    VALIDATE_CERTS = True
-)
+if USE_EMAILING:
+    conf_correo = ConnectionConfig(
+        MAIL_USERNAME = str(os.getenv("MAIL_USERNAME")),
+        MAIL_PASSWORD = str(os.getenv("MAIL_PASSWORD")),
+        MAIL_FROM = str(os.getenv("MAIL_FROM")),
+        MAIL_PORT = 25,
+        MAIL_SERVER = str(os.getenv("MAIL_SERVER")),
+        MAIL_STARTTLS = os.getenv("MAIL_STARTTLS", True).lower() == "true",
+        MAIL_SSL_TLS = os.getenv("MAIL_SSL_TLS", False).lower() == "true",
+        USE_CREDENTIALS = True,
+        VALIDATE_CERTS = True
+    )
 
-fastmail = FastMail(conf_correo)
+    fastmail = FastMail(conf_correo)
 def generate_verification_code():
     return ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
 
@@ -63,14 +67,14 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
             body=f"Tu código de verificación es: {verification_code}",
             subtype="html"
         )
-        print(verification_code)
-        await fastmail.send_message(message)
-
+        if USE_EMAILING:
+            await fastmail.send_message(message)
+        else:
+            print(verification_code)
     async def on_after_forgot_password(
         self, user: User, token: str, request: Optional[Request] = None
     ):
         logger.info(f"El usuario {user.id} olvidó su contraseña. Token de restablecimiento: {token}")
-
     async def on_after_request_verify(
         self, user: User, token: str, request: Optional[Request] = None
     ):
@@ -82,7 +86,6 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
             return True
         return False
 
-    # Keep the existing verify_email method as well
     async def verify_email(self, user: User, code: str):
         return await self.verify_user(user, code)
 async def get_user_manager(user_db: SQLAlchemyUserDatabase = Depends(get_user_db)):

@@ -20,7 +20,6 @@ from scipy import stats
 from fastapi_mail import FastMail, MessageSchema, ConnectionConfig
 from fpdf import FPDF
 import numpy as np
-
 bearer_transport = BearerTransport(tokenUrl="auth/jwt/login")
 dictConfig(schemas.LogConfig().model_dump())
 logger = logging.getLogger("SensorApi")
@@ -28,20 +27,21 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 tareas_fondo = set()
 cliente = None
 
-# Configuración de correo electrónico
-conf_correo = ConnectionConfig(
-    MAIL_USERNAME = str(os.getenv("MAIL_USERNAME")),
-    MAIL_PASSWORD = str(os.getenv("MAIL_PASSWORD")),
-    MAIL_FROM = str("sistemas@bauduccosa.com.ar"),
-    MAIL_PORT = 25,
-    MAIL_SERVER = str(os.getenv("MAIL_SERVER")),
-    MAIL_STARTTLS = os.getenv("MAIL_STARTTLS", "True").lower() == "true",
-    MAIL_SSL_TLS = os.getenv("MAIL_SSL_TLS", "False").lower() == "true",
-    USE_CREDENTIALS = True,
-    VALIDATE_CERTS = True
-)
+USE_EMAILING = os.getenv("USE_EMAILING", False)
+if USE_EMAILING:
+    conf_correo = ConnectionConfig(
+        MAIL_USERNAME = str(os.getenv("MAIL_USERNAME")),
+        MAIL_PASSWORD = str(os.getenv("MAIL_PASSWORD")),
+        MAIL_FROM = str("sistemas@bauduccosa.com.ar"),
+        MAIL_PORT = 25,
+        MAIL_SERVER = str(os.getenv("MAIL_SERVER")),
+        MAIL_STARTTLS = os.getenv("MAIL_STARTTLS", "True").lower() == "true",
+        MAIL_SSL_TLS = os.getenv("MAIL_SSL_TLS", "False").lower() == "true",
+        USE_CREDENTIALS = True,
+        VALIDATE_CERTS = True
+    )
 
-fastmail = FastMail(conf_correo)
+    fastmail = FastMail(conf_correo)
 
 
 @asynccontextmanager
@@ -72,8 +72,8 @@ async def obtener_db():
 
 async def escuchar(cliente):
     async for mensaje in cliente.messages:
-        logger.info(f"Tema: {mensaje.topic}")
-        logger.info(f"Carga útil: {mensaje.payload.decode()}")
+        #logger.info(f"Tema: {mensaje.topic}")
+        #logger.info(f"Carga útil: {mensaje.payload.decode()}")
 
         tema_str = str(mensaje.topic)
         if not validar_tema(tema_str):
@@ -195,8 +195,8 @@ async def generar_notificacion(sesion_db, evento_critico,usuario: models.User = 
     sesion_db.add(notificacion)
     await sesion_db.commit()
 
-    # Enviar correo electrónico
-    await enviar_correo_notificacion(evento_critico, notificacion)
+    if USE_EMAILING:
+        await enviar_correo_notificacion(evento_critico, notificacion)
 
 async def enviar_correo_notificacion(evento_critico, notificacion):
     contenido_pdf = generar_pdf_evento(evento_critico)
@@ -265,8 +265,6 @@ app.include_router(
     prefix="/users",
     tags=["users"],
 )
-
-
 @app.get("/tipo-sensor/", response_model=schemas.TipoSensorList)
 async def listar_tipos_sensor(db: AsyncSession = Depends(models.get_async_no_context_session),usuario: models.User = Depends(current_active_user)):
     resultado = await db.execute(select(models.TipoSensor))
@@ -284,6 +282,38 @@ async def crear_tipo_sensor(datos_sensor: schemas.TipoSensorCreate, db: AsyncSes
     await db.refresh(nuevo_tipo_sensor)
     return nuevo_tipo_sensor
 
+@app.get("/maquinas/lista", response_model=List[schemas.MaquinaListaRead])
+async def listar_maquinas_y_sensores(
+    db: AsyncSession = Depends(models.get_async_no_context_session),
+    usuario: models.User = Depends(current_active_user)
+):
+    consulta = (
+        select(models.Maquina)
+        .options(selectinload(models.Maquina.sensores).joinedload(models.Sensor.tipo_sensor))
+    )
+
+    resultado = await db.execute(consulta)
+    maquinas = resultado.unique().scalars().all()
+
+    maquinas_lista = []
+    for maquina in maquinas:
+        sensores_unicos = {}
+        for sensor in maquina.sensores:
+            if sensor.nombre not in sensores_unicos:
+                sensores_unicos[sensor.nombre] = schemas.SensorListaRead(
+                    nombre=sensor.nombre,
+                    tipo=sensor.tipo_sensor.tipo
+                )
+        
+        maquinas_lista.append(
+            schemas.MaquinaListaRead(
+                id=maquina.id,
+                nombre=maquina.nombre,
+                sensores=list(sensores_unicos.values())
+            )
+        )
+
+    return maquinas_lista
 @app.get("/maquinas/{maquina_id}")
 async def leer_maquina(maquina_id: int, db: AsyncSession = Depends(models.get_async_no_context_session),usuario: models.User = Depends(current_active_user)):
     async with db as sesion:
@@ -340,60 +370,59 @@ async def leer_maquina(maquina_id: int, db: AsyncSession = Depends(models.get_as
 
         return datos_maquina
 
+from sqlalchemy.orm import selectinload
+
 @app.get("/maquinas/{maquina_id}/sensores/historial")
 async def obtener_historial_sensores(
     maquina_id: int,
-    nombre_sensor: str = Query(None, description="Filtrar por nombre del sensor"),
-    tipo_sensor: str = Query(None, description="Filtrar por tipo de sensor"),
-    fecha_inicio: datetime = Query(None, description="Fecha de inicio del historial en formato YYYY-MM-DD HH:MM:SS"),
-    fecha_fin: datetime = Query(None, description="Fecha de fin del historial en formato YYYY-MM-DD HH:MM:SS"),
-    db: AsyncSession = Depends(models.get_async_no_context_session),usuario: models.User = Depends(current_active_user)):
-    
-    # Construir la subconsulta para encontrar las últimas entradas de sensores según los filtros
-    subconsulta = (
-        select(
-            models.Sensor.id,
-            func.max(models.Sensor.fecha_hora).label("max_fecha_hora")
-        )
-        .where(models.Sensor.maquina_id == maquina_id)
-        .group_by(models.Sensor.id)
-        .subquery()
-    )
+    nombre_sensor: str = Query(None),
+    tipo_sensor: str = Query(None),
+    fecha_inicio: datetime = Query(None),
+    fecha_fin: datetime = Query(None),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(100, ge=1, le=1000),
+    db: AsyncSession = Depends(models.get_async_no_context_session),
+    usuario: models.User = Depends(current_active_user)
+):
+    skip = (page - 1) * page_size
+    query = select(models.Sensor).options(selectinload(models.Sensor.tipo_sensor)).where(models.Sensor.maquina_id == maquina_id)
 
-    # Crear la consulta principal usando la subconsulta para asegurar que solo se obtengan los datos más recientes
-    consulta_sensores = (
-        select(models.Sensor)
-        .join(subconsulta, (models.Sensor.id == subconsulta.c.id) & (models.Sensor.fecha_hora == subconsulta.c.max_fecha_hora))
-        .options(joinedload(models.Sensor.tipo_sensor))
-    )
-
-    # Aplicar filtros adicionales si se proporcionan
     if nombre_sensor:
-        consulta_sensores = consulta_sensores.filter(models.Sensor.nombre == nombre_sensor)
+        query = query.filter(models.Sensor.nombre == nombre_sensor)
     if tipo_sensor:
-        consulta_sensores = consulta_sensores.filter(models.Sensor.tipo_sensor.has(tipo=tipo_sensor))
+        query = query.filter(models.Sensor.tipo_sensor.has(tipo=tipo_sensor))
     if fecha_inicio:
-        consulta_sensores = consulta_sensores.filter(models.Sensor.fecha_hora >= fecha_inicio)
+        query = query.filter(models.Sensor.fecha_hora >= fecha_inicio)
     if fecha_fin:
-        consulta_sensores = consulta_sensores.filter(models.Sensor.fecha_hora <= fecha_fin)
+        query = query.filter(models.Sensor.fecha_hora <= fecha_fin)
 
-    # Ejecutar la consulta
-    datos_sensores = await db.execute(consulta_sensores)
-    sensores = datos_sensores.scalars().all()
+    query = query.order_by(models.Sensor.fecha_hora.desc())
+    
+    # Execute the query to get the total count
+    count_query = select(func.count()).select_from(query.subquery())
+    total = await db.scalar(count_query)
 
-    # Manejar el caso de no encontrar datos
-    if not sensores:
-        raise HTTPException(status_code=404, detail="No se encontraron datos históricos para los criterios especificados.")
+    # Apply pagination
+    query = query.offset(skip).limit(page_size)
 
-    # Formatear y devolver los datos
-    return [{
-        "sensor_id": sensor.id,
-        "nombre_sensor": sensor.nombre,
-        "tipo_sensor": sensor.tipo_sensor.tipo,
-        "valor": sensor.valor,
-        "fecha_hora": sensor.fecha_hora.isoformat()
-    } for sensor in sensores]
+    result = await db.execute(query)
+    sensors = result.unique().scalars().all()
 
+    return {
+        "data": [
+            {
+                "id": sensor.id,
+                "nombre": sensor.nombre,
+                "tipo": sensor.tipo_sensor.tipo if sensor.tipo_sensor else None,
+                "valor": sensor.valor,
+                "fecha_hora": sensor.fecha_hora.isoformat()
+            }
+            for sensor in sensors
+        ],
+        "page": page,
+        "page_size": page_size,
+        "total": total
+    }
 @app.get("/eventos-criticos/", response_model=List[schemas.EventoCriticoRead])
 async def listar_eventos_criticos(
     db: AsyncSession = Depends(models.get_async_no_context_session),
@@ -482,23 +511,34 @@ async def analizar_tendencias(
         "r_cuadrado": float(r_valor**2),
         "datos": [{"fecha": fecha.isoformat(), "valor": float(valor)} for fecha, valor in zip(fechas, valores)]
     }
+from sqlalchemy.orm import joinedload
+from sqlalchemy.future import select
+
 @app.get("/resumen-maquina/{maquina_id}")
 async def obtener_resumen_maquina(
     maquina_id: int,
-    db: AsyncSession = Depends(models.get_async_no_context_session)
-,usuario: models.User = Depends(current_active_user)):
-    maquina = await db.get(models.Maquina, maquina_id)
+    db: AsyncSession = Depends(models.get_async_no_context_session),
+    usuario: models.User = Depends(current_active_user)
+):
+    
+    resultado_maquina = await db.execute(
+        select(models.Maquina).where(models.Maquina.id == maquina_id)
+    )
+    maquina = resultado_maquina.scalar_one_or_none()
     if not maquina:
         raise HTTPException(status_code=404, detail="Máquina no encontrada")
 
+    # Obtener los últimos 10 registros de sensores
     resultado_sensores = await db.execute(
         select(models.Sensor)
+        .options(joinedload(models.Sensor.tipo_sensor))
         .filter(models.Sensor.maquina_id == maquina_id)
         .order_by(models.Sensor.fecha_hora.desc())
         .limit(10)
     )
-    sensores = resultado_sensores.scalars().all()
+    sensores = resultado_sensores.unique().scalars().all()
 
+    # Obtener los últimos 5 eventos críticos
     resultado_eventos = await db.execute(
         select(models.EventosCriticos)
         .join(models.Sensor)

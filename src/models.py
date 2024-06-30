@@ -1,6 +1,6 @@
 from sqlalchemy.future import select
 from fastapi import Depends
-from sqlalchemy import Column, Integer, Float, Boolean, String, DateTime, ForeignKey, create_engine
+from sqlalchemy import UUID, Column, Integer, Float, Boolean, String, DateTime, ForeignKey, create_engine
 from sqlalchemy.orm import relationship, DeclarativeBase, sessionmaker
 from fastapi_users.db import SQLAlchemyBaseUserTableUUID, SQLAlchemyUserDatabase
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine

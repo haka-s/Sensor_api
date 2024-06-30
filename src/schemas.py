@@ -1,3 +1,4 @@
+import re
 from pydantic import BaseModel, EmailStr, Field
 from typing import List, Optional
 from datetime import datetime
@@ -37,6 +38,18 @@ class SensorBase(BaseModel):
     maquina_id: int
     estado: Optional[bool] = None
     valor: Optional[float] = None
+
+class SensorListaRead(BaseModel):
+    nombre: str
+    tipo: str
+
+class MaquinaListaRead(BaseModel):
+    id: int
+    nombre: str
+    sensores: List[SensorListaRead]
+
+    class Config:
+        from_attributes = True
 
 class SensorCreate(SensorBase):
     pass
