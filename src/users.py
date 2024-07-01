@@ -70,7 +70,7 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
         if USE_EMAILING:
             await fastmail.send_message(message)
         else:
-            print(verification_code)
+            logger.info(f"Verificación solicitada para el usuario {user.id}. Token de verificación: {verification_code}")
     async def on_after_forgot_password(
         self, user: User, token: str, request: Optional[Request] = None
     ):
